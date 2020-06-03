@@ -1,0 +1,81 @@
+MINIMIZE_ALLOCATION = true;
+LOCATIONS_ENUM = {Warsaw, Cracov, Wroclaw, Poznan, Gdansk};
+LOCATION_TYPES_ENUM = {OS, K8S};
+SERVICE_TYPES = {DNS_1};
+
+%NUM_TIME_SLOTS = 8;
+NUM_SERVICE_INSTANCES = 2;
+MIN_SLA = 8000.0; % 80%
+MAX_SLA = 10000.0; % 100%
+MAX_SCALED_INST_PER_FN = 1;
+MAX_REMAINING_SLOTS = 0; % NUM_TIME_SLOTS - 1;
+MAX_ACTION_PENALTY = 100;
+
+locationDistance = [|
+0, 350, 400, 250, 450 |
+350, 0, 300, 400, 800 |
+400, 300, 0, 300, 750 |
+250, 400, 300, 0, 350 |
+450, 800, 750, 350, 0
+|];
+
+%CPU [cores], RAM [GB], THR [Mb/s]
+locationCapacity = [|
+144, 512, 60 |
+144, 512, 60 |
+144, 512, 60 |
+144, 512, 60 |
+144, 512, 60 |];
+
+locationType = [OS, OS, OS, OS, OS];
+
+MAX_DISTANCE = max(locationDistance);
+
+serviceInstanceType = [DNS_1, DNS_1];
+
+%in each row (service instance) traffic demand for each location
+serviceDemands = [|
+40, 15, 20, 5, 25 |
+15, 20, 30, 15, 20 |]; % cumulative in Mb/s for each service instance for particular location
+
+serviceInstanceSLALevel = [ceil(MAX_SLA * 0.9), ceil(MAX_SLA * 0.999)]; % we can calculate it from different separate indicators - this is a cumulative measure - 10000 mins 100% satisfied
+
+% we start from one instance per function, location and service instance
+% initialFunctionPlacement = array3d(SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE,
+% [4, 8,  4, 8,  4, 8,  4, 8,  4, 8,  % S1
+% 4, 8,  4, 8,  4, 8,  4, 8,  4, 8]); % S2
+
+% we start from one instance per function, location and service instance
+% initialDemandAllocation = array3d(SERVICE_INSTANCES, LOCATIONS, LOCATIONS,
+% [1600, 0, 0, 0, 0,   0,   1500, 0, 0, 0,   0, 100, 1600, 200, 0,   0, 0, 0,  500, 0,   0, 0, 0, 900, 1600,  % S1
+% 1500, 0, 0, 0, 0,   100, 1600, 0, 0, 0,   0, 0,   1600, 0,   0,   0, 0, 0, 1500, 0,   0, 0, 0, 100, 1600]); % S2
+
+maxFunctionRequirements = [|
+4, 8, 5 | % vLB_1
+2, 4, 2  % vDNS_1
+|];
+
+actionDuration = array3d(LOCATION_TYPES, FUNCTION_TYPE, ACTION_TYPE,
+[2, 2, 1, 2, 1,   2, 2, 0, 2, 1, % OS [SCALE_OUT, SCALE_IN, TD, ACT_1, ACT_2]
+ 1, 1, 1, 2, 1,   1, 1, 0, 2, 1 ]); % K8S
+
+% 1 means action may cause inconsistency of data, so locks whole VNF in location
+% last action can be executed along with others in terms of conflict
+%all allocated resources are locked due to operation performed - so far all from location
+%to avoid that, we should scale enough resources before and we should migrate traffic out for time of action
+%{SCALE, TD, ACT_1, ACT_2};
+%{ACT_CONFLICT, ACT_RES_LOCK, ACT_FN_LOCK, ACT_DEADLINE};
+actionProperties = array2d(ACTION_TYPE, ACTION_PROPERTIES, [
+1, 1, 0, 0, % SCALE_OUT, action delay cost is already reflected in demand satisfaction
+1, 0, 1, 0, % SCALE_IN, action delay cost is already reflected in demand satisfaction
+0, 0, 0, 0, % TD, action delay cost is already reflected in demand satisfaction
+1, 0, 0, MAX_ACTION_PENALTY, % ACT_1
+0, 0, 1, MAX_ACTION_PENALTY, % ACT_2
+]);
+
+%initialActionCounter = array4d(SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE,
+%[0, 1, 0, 1,   0, 0, 0, 0,  0, 6, 0, 12,   0, 0, 0, 0,   0, 0, 0, 0, % S1 -> [5 LOC] -> [f1,f2] -> [ACT1, ACT2]
+%0, 0, 0, 0,   0, 1, 0, 1,  0, 6, 0, 12,   0, 0, 0, 0,   0, 0, 0, 0 % S2
+%]);
+
+MAX_ACTION_DURATION = max(actionDuration);

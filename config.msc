@@ -1,0 +1,28 @@
+{
+    "executable": "",
+    "extraFlags": [],
+    "id": "org.minizinc.mip.coin-bc",
+    "isGUIApplication": false,
+    "mznlib": "-Glinear",
+    "name": "COIN-BC",
+    "needsMznExecutable": false,
+    "needsSolns2Out": true,
+    "needsStdlibDir": false,
+    "stdFlags": [
+        "-a",
+        "-p",
+        "-s",
+        "-v"
+    ],
+    "supportsFzn": true,
+    "supportsMzn": true,
+    "tags": [
+        "mip",
+        "float",
+        "api",
+        "osicbc",
+        "coinbc",
+        "cbc"
+    ],
+    "version": "2.10/1.17"
+}
