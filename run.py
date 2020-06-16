@@ -17,12 +17,17 @@ def load_config():
         new_config['Slots'] = {}
         new_config['Slots']['multiplier'] = '3'
         new_config['Slots']['iterations'] = '4'
+        new_config['Slots']['max-remaining'] = '2'
         new_config['TrafficDemands'] = {}
         new_config['TrafficDemands']['fixed'] = 'yes'
-        new_config['TrafficDemands']['level'] = '15'
+        new_config['TrafficDemands']['level'] = '100'
+        new_config['TrafficDemands']['min-demand'] = '5'
         new_config['ActionDemands'] = {}
         new_config['ActionDemands']['fixed'] = 'yes'
         new_config['ActionDemands']['level'] = '15'
+        new_config['Allocation'] = {}
+        new_config['Allocation']['optimize-resources'] = 'no'
+        new_config['Allocation']['service-alternating'] = 'no'
         with open('config.cfg', 'w') as configfile:
             new_config.write(configfile)
         exit()
@@ -143,20 +148,76 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
     return result
 
 
-def gen_traffic_demand_information(iteration, initial_function_placement, traffic_demand_level, change_traffic_demands):
-    traffic_demands = [[40, 15, 20, 5, 25], [15, 20, 30, 15, 20]]
+def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand_level, change_traffic_demands):
+    # traffic_demands = [[40, 15, 20, 5, 25], [15, 20, 30, 15, 20]]
+    # return traffic_demands
+    traffic_demands = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]
+    if change_traffic_demands:
+        random.seed(iteration)
+    else:
+        random.seed(1)
 
+    min_demand = traffic_min_demand
+    for s in range(2):
+        to_allocate = traffic_demand_level - 5 * min_demand
+        locations = [0, 1, 2, 3, 4]
+        random.shuffle(locations)
+        for l in range(5):
+            if l == 4:
+                traffic_demands[s][locations[l]] = min_demand + to_allocate
+            else:
+                rand_demand = random.randint(0, math.ceil(to_allocate*2/3))
+                traffic_demands[s][locations[l]] = min_demand + rand_demand
+                to_allocate -= rand_demand
+
+    print(traffic_demands)
     return traffic_demands
+
+
+def gen_initial_demand_allocation(service_demands, initial_function_placement, function_requirements):
+    # initial_demand_allocation = [[[16, 0, 0, 0, 0], [0, 15, 0, 0, 0], [0, 1, 16, 2, 0], [0, 0, 0, 5, 0],[0, 0, 0, 4, 16]],
+    #                             [[15, 0, 0, 0, 0], [1, 16, 0, 0, 0], [0, 0, 16, 0, 0], [0, 0, 0, 15, 0], [0, 0, 0, 1, 16]]]
+    initial_demand_allocation = [[[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+                                [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]]
+    for s in range(len(service_demands)):
+        # print("Demands: {}".format(service_demands[s]))
+        # print(initial_demand_allocation[s])
+        loc_num = len(service_demands[s])
+        demand = [0] * loc_num
+        capacity = [0] * loc_num
+        for l in range(loc_num):
+            max_loc_capacity = min([initial_function_placement[s][l][0]*function_requirements[0][2],
+                                    initial_function_placement[s][l][1]*function_requirements[1][2]])
+            initial_demand_allocation[s][l] = [0] * loc_num
+            initial_demand_allocation[s][l][l] = min([max_loc_capacity, service_demands[s][l]])
+            demand[l] += initial_demand_allocation[s][l][l]
+            capacity[l] = max_loc_capacity - initial_demand_allocation[s][l][l]
+        for l in range(loc_num):
+            for s_l in range(loc_num):
+                if capacity[l] == 0:
+                    break
+                if demand[s_l] == service_demands[s][s_l]:
+                    continue
+                initial_demand_allocation[s][s_l][l] = min(capacity[l], service_demands[s][s_l] - demand[s_l])
+                demand[s_l] += initial_demand_allocation[s][s_l][l]
+                capacity[l] -= initial_demand_allocation[s][s_l][l]
+
+        # print(initial_demand_allocation[s])
+    return initial_demand_allocation
 
 
 async def run_allocation(config):
     slot_multiplier = config.getint("Slots", "multiplier")
     max_iterations = config.getint("Slots", "iterations")
+    max_remaining_slots = config.getint("Slots", "max-remaining")
     traffic_demand_level = config.getint("TrafficDemands", "level")
+    traffic_min_demand = config.getint("TrafficDemands", "min-demand")
     action_demand_level = config.getint("ActionDemands", "level")
     joint_actions_allocation = False
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
+    optimize_resources = config.getboolean("Allocation", "optimize-resources")
+    service_alternating = config.getboolean("Allocation", "service-alternating")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
     # coin_bc = minizinc.Solver.load(Path("./config.msc"))
@@ -173,12 +234,20 @@ async def run_allocation(config):
     target_placement = minizinc.Instance(coin_bc, placement_model)
     target_placement["NUM_TIME_SLOTS"] = 1
     target_placement["ITERATION_NO"] = 1
-    initial_demand_allocation = [[[16, 0, 0, 0, 0], [0, 15, 0, 0, 0], [0, 1, 16, 2, 0], [0, 0, 0, 5, 0],[0, 0, 0, 4, 16]],
-                                 [[15, 0, 0, 0, 0], [1, 16, 0, 0, 0], [0, 0, 16, 0, 0], [0, 0, 0, 15, 0], [0, 0, 0, 1, 16]]]
-    initial_function_placement = [[[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]], [[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]]]
-    remaining_time_slots = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
-    service_demands = gen_traffic_demand_information(1, initial_function_placement, traffic_demand_level,
+    target_placement["MAX_REMAINING_SLOTS"] = max_remaining_slots
+    target_placement["MINIMIZE_ALLOCATION"] = optimize_resources
+    target_placement["ONE_SERVICE_OPT"] = service_alternating
+
+    function_requirements = [[4, 8, 5],  # vLB_1
+                             [2, 4, 2]]  # vDNS_1
+    service_demands = gen_traffic_demand_information(1, traffic_min_demand, traffic_demand_level,
                                                      change_traffic_demands)
+    initial_function_placement = [[[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]], [[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]]]
+    initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
+                                                              function_requirements)
+    remaining_time_slots = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
+
+    target_placement["maxFunctionRequirements"] = function_requirements
     target_placement["serviceDemands"] = service_demands
     target_placement["initialDemandAllocation"] = initial_demand_allocation
     target_placement["initialFunctionPlacement"] = initial_function_placement
@@ -204,13 +273,13 @@ async def run_allocation(config):
 
     action_time_slots = maxActionDuration * slot_multiplier
     num_time_slots = action_time_slots + 1
-    final_objective = 1
     iterations = 0
     avgSla = [0, 0]
     totalPlacement = [[0, 0], [0, 0]]
     totalActionCounter = [[0, 0], [0, 0]]
     lastActionCounter = [[0, 0], [0, 0]]
     roundPlacementSolution = round_sig(final_placement_solution.allocationObjective, 2)
+    final_objective = roundPlacementSolution + 1
     total_start_time = time.time()
     while iterations <= max_iterations and final_objective > roundPlacementSolution:
         start_time = time.time()
@@ -219,14 +288,18 @@ async def run_allocation(config):
         orchestration_allocation = minizinc.Instance(coin_bc, orchestration_model)
         orchestration_allocation["NUM_TIME_SLOTS"] = num_time_slots
         orchestration_allocation["ITERATION_NO"] = iterations
+        orchestration_allocation["MAX_REMAINING_SLOTS"] = max_remaining_slots
+        orchestration_allocation["MINIMIZE_ALLOCATION"] = optimize_resources
+        orchestration_allocation["ONE_SERVICE_OPT"] = service_alternating
         orchestration_allocation["targetDemandAllocations"] = targetDemandAllocations
         orchestration_allocation["functionPlacementTarget"] = functionPlacementTarget
         orchestration_allocation["targetSlaSatisfaction"] = targetSlaSatisfaction
         orchestration_allocation["targetDemandGap"] = targetDemandGap
         orchestration_allocation["targetDemandAllocationCost"] = targetDemandAllocationCost
         orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
+        orchestration_allocation["maxFunctionRequirements"] = function_requirements
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
-        service_demands = gen_traffic_demand_information(iterations, initial_function_placement, traffic_demand_level,
+        service_demands = gen_traffic_demand_information(iterations, traffic_min_demand, traffic_demand_level,
                                                          change_traffic_demands)
         orchestration_allocation["serviceDemands"] = service_demands
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
