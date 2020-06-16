@@ -1,14 +1,16 @@
-MINIMIZE_ALLOCATION = true;
+MINIMIZE_ALLOCATION = false;
+ONE_SERVICE_OPT = false;
 LOCATIONS_ENUM = {Warsaw, Cracov, Wroclaw, Poznan, Gdansk};
 LOCATION_TYPES_ENUM = {OS, K8S};
 SERVICE_TYPES = {DNS_1};
 
 %NUM_TIME_SLOTS = 8;
+%ITERATION_NO = 1
 NUM_SERVICE_INSTANCES = 2;
 MIN_SLA = 8000.0; % 80%
 MAX_SLA = 10000.0; % 100%
 MAX_SCALED_INST_PER_FN = 1;
-MAX_REMAINING_SLOTS = 0; % NUM_TIME_SLOTS - 1;
+MAX_REMAINING_SLOTS = 2; % NUM_TIME_SLOTS - 1;
 MAX_ACTION_PENALTY = 100;
 
 locationDistance = [|
@@ -34,9 +36,9 @@ MAX_DISTANCE = max(locationDistance);
 serviceInstanceType = [DNS_1, DNS_1];
 
 %in each row (service instance) traffic demand for each location
-serviceDemands = [|
-40, 15, 20, 5, 25 |
-15, 20, 30, 15, 20 |]; % cumulative in Mb/s for each service instance for particular location
+%serviceDemands = [|
+%40, 15, 20, 5, 25 |
+%15, 20, 30, 15, 20 |]; % cumulative in Mb/s for each service instance for particular location
 
 serviceInstanceSLALevel = [ceil(MAX_SLA * 0.9), ceil(MAX_SLA * 0.999)]; % we can calculate it from different separate indicators - this is a cumulative measure - 10000 mins 100% satisfied
 

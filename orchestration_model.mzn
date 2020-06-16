@@ -16,7 +16,15 @@ array[SERVICE_INSTANCES, LOCATIONS] of 0..max([serviceDemands[i, l] | i in SERVI
 %what is the cost of the allocation of demand - on distance basis
 array[SERVICE_INSTANCES, LOCATIONS] of 0.0..MAX_DISTANCE: targetDemandAllocationCost;% = array2d(SERVICE_INSTANCES, LOCATIONS, [40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
 
+% initial allocation of actions
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100: initialActionCounter;
+
+% actions demands
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100: actionDemands;
+
 int: MAX_FN_PLACEMENT = max([functionPlacementTarget[i, l, f] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE]);
+
+int: TOTAL_ACTION_DEMAND = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemands[i, l, f, a]);
 
 %%%%%%%%%%%%%
 % Variables %
@@ -41,9 +49,13 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: func
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: conflictingActionCounter;
 
 % placement of functions to satisfy demands within location limits for each time slot
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..20: actionCounter;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..40: actionCounter;
 
+% allocation of actions to satisfy action demands
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of var 0..20: actionCounterAllocation;
 
+%how much of the action demand is not satisfied - we should minimize it
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var 0..max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE]): actionDemandGap;
 
 %amount of time slots we can move to the next iteration for execution of the action
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of var 0..NUM_TIME_SLOTS: remainingSlots;
@@ -185,6 +197,16 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a 
   actionCounter[i, l, f, a, 1] = 0
 );
 
+constraint forall(l in LOCATIONS, f in FUNCTION_TYPE, a in 1..CUSTOM_ACTION_OFFSET, t in ACTION_TIME_SLOTS)(
+    if ONE_SERVICE_OPT /\ ITERATION_NO mod 2 == 1 then
+        actionCounter[1, l, f, a, t] = 0
+    elseif ONE_SERVICE_OPT /\ ITERATION_NO mod 2 == 0 then
+        actionCounter[2, l, f, a, t] = 0
+    else
+        actionCounter[1, l, f, a, t] >= 0 /\ actionCounter[2, l, f, a, t] >= 0
+    endif
+);
+
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)(
   let {
     var int: placementChange = functionPlacement[i, l, f, t] - functionPlacement[i, l, f, t - 1];
@@ -212,10 +234,30 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
     actionCounter[i, l, f, ACT_1, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET]))
+                                     + actionCounterAllocation[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET, t]
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
     actionCounter[i, l, f, ACT_2, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET]))
+                                     + actionCounterAllocation[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET, t]
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
+    sum(a in CUSTOM_ACTION_TYPE)(actionCounterAllocation[i, l, f, a, t]) <= functionPlacement[i, l, f, t]
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE, t in ACTION_TIME_SLOTS) (
+    if TOTAL_ACTION_DEMAND == 0 then
+        actionCounterAllocation[i, l, f, a, t] = 0
+    endif
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE) (
+    sum(t in ACTION_TIME_SLOTS)(actionCounterAllocation[i, l, f, a, t]) <= actionDemands[i, l, f, a]
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE) (
+    actionDemandGap[i, l, f, a] = actionDemands[i, l, f, a] - sum(t in ACTION_TIME_SLOTS)(actionCounterAllocation[i, l, f, a, t])
 );
 
 %the limit of scaled instances at once
@@ -255,6 +297,10 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a 
     endif
 );
 
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
+    sum(a in ACTION_TYPE)(actionPlacement[i, l, f, a, t]) <= functionPlacement[i, l, f, t]
+);
+
 % when action blocks function it cannot be used for allocation of demands - time of account included only for non ScaleIn operation (when function instance is removed)
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
     %functionPlacementReduction[i, l, f, t] = sum(a in ACTION_TYPE where actionProperties[a, ACT_FN_LOCK] > 0 /\ a != SCALE_IN)(actionPlacement[i, l, f, a, t]) + sum(a in ACTION_TYPE where actionProperties[a, ACT_FN_LOCK] > 0 /\ a == SCALE_IN)(actionPlacement[i, l, f, a, t])%-actionCounter[i, l, f, a, t])
@@ -283,26 +329,50 @@ constraint forall(i in SERVICE_INSTANCES, f in FUNCTION_TYPE)(
 %   OBJECTIVE
 %%%%%%%%%%%%%%%%%%
 
-var float: obj1 = sum(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandGap[i, l, t])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l])*NUM_TIME_SLOTS)*200000;
-var float: obj2 = sum(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandAllocationCost[i, l, t])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE*NUM_TIME_SLOTS)*100;
-var float: obj3 = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS);
-%var float: obj4 = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in ACTION_TYPE, t in TIME_SLOTS)(actionPlacement[i, l, f, a, t]);
+
+var float: obj1_1 = sum(i in 1..1, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandGap[i, l, t])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l])*NUM_TIME_SLOTS)*200000;
+var float: obj2_1 = sum(i in 1..1, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandAllocationCost[i, l, t])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE*NUM_TIME_SLOTS)*100;
+var float: obj3_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100;
+var float: obj4_1;
+constraint(
+    if TOTAL_ACTION_DEMAND > 0 then
+        obj4_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100000
+    else
+        obj4_1 = 0
+    endif
+);
+
+var float: obj1_2 = sum(i in 2..2, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandGap[i, l, t])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l])*NUM_TIME_SLOTS)*200000;
+var float: obj2_2 = sum(i in 2..2, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandAllocationCost[i, l, t])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE*NUM_TIME_SLOTS)*100;
+var float: obj3_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100;
+var float: obj4_2;
+constraint(
+    if TOTAL_ACTION_DEMAND > 0 then
+        obj4_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100000
+    else
+        obj4_2 = 0
+    endif
+);
 
 var float: lastObj1 = sum(i in SERVICE_INSTANCES, l in LOCATIONS)(demandGap[i, l, NUM_TIME_SLOTS])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l]))*200000;
 var float: lastObj2 = sum(i in SERVICE_INSTANCES, l in LOCATIONS)(demandAllocationCost[i, l, NUM_TIME_SLOTS])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE)*100;
-var float: lastObj3 = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)((functionPlacement[i, l, f, NUM_TIME_SLOTS] - functionPlacementReduction[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU]));
+var float: lastObj3 = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)((functionPlacement[i, l, f, NUM_TIME_SLOTS] - functionPlacementReduction[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU]))/100;
 
 var float: allocationObjective;
 var float: totalObjective;
 var float: lastTimeSlotObjective;
 
 constraint(
-    lastTimeSlotObjective = lastObj1 + lastObj2 /\ allocationObjective = obj1 + obj2
+    lastTimeSlotObjective = lastObj1 + lastObj2 + obj4_1 + obj4_2
+);
+
+constraint(
+    allocationObjective = obj1_1 + obj2_1 + obj4_1 + obj1_2 + obj2_2 + obj4_2
 );
 
 constraint(
     if MINIMIZE_ALLOCATION then
-        totalObjective = allocationObjective + obj3
+        totalObjective = allocationObjective + obj3_1 + obj3_1
     else
         totalObjective = allocationObjective
     endif

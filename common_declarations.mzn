@@ -1,4 +1,5 @@
 bool: MINIMIZE_ALLOCATION;
+bool: ONE_SERVICE_OPT;
 int: NUM_LOCATION = 5;
 set of int: LOCATIONS = 1..NUM_LOCATION;
 enum LOCATIONS_ENUM;
@@ -20,6 +21,7 @@ float: MIN_SLA;
 float: MAX_SLA;
 int: MAX_DISTANCE; % calculated
 int: NUM_TIME_SLOTS;
+int: ITERATION_NO;
 int: MAX_SCALED_INST_PER_FN;
 int: MAX_ACTION_DURATION; % calculated
 int: MAX_REMAINING_SLOTS;
@@ -45,5 +47,3 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of 0..100: initialFunctionPla
 array[SERVICE_INSTANCES, LOCATIONS, LOCATIONS] of 0..max([locationCapacity[l, to_enum(CAPABILITY, 3)] | l in LOCATIONS]): initialDemandAllocation;
 % remaining time slots from previous iteration
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of 0..NUM_TIME_SLOTS: extraTimeSlots;
-% placement of functions to satisfy demands within location limits for each time slot
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var 0..100: initialActionCounter;
