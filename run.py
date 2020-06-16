@@ -1,5 +1,5 @@
 from pathlib import Path
-
+import configparser
 import minizinc
 import asyncio
 import random
@@ -7,8 +7,27 @@ import decimal
 import time
 import math
 
-decimal_ctx = decimal.Context()
-decimal_ctx.prec = 20
+
+def load_config():
+    new_config = configparser.ConfigParser()
+    try:
+        new_config.read_file(open('config.cfg'))
+    except FileNotFoundError:
+        print("NO CONFIGURATION FILE. SET TO DEFAULTS. PLEASE VERIFY")
+        new_config['Slots'] = {}
+        new_config['Slots']['multiplier'] = '3'
+        new_config['Slots']['iterations'] = '4'
+        new_config['TrafficDemands'] = {}
+        new_config['TrafficDemands']['fixed'] = 'yes'
+        new_config['TrafficDemands']['level'] = '15'
+        new_config['ActionDemands'] = {}
+        new_config['ActionDemands']['fixed'] = 'yes'
+        new_config['ActionDemands']['level'] = '15'
+        with open('config.cfg', 'w') as configfile:
+            new_config.write(configfile)
+        exit()
+
+    return new_config
 
 
 def get_last_slot(tab, dimensions, level=1):
@@ -130,8 +149,14 @@ def gen_traffic_demand_information(iteration, initial_function_placement, traffi
     return traffic_demands
 
 
-async def run_allocation(slot_multiplier, max_iterations, demand_level, joint_actions_allocation,
-                         change_traffic_demands, change_action_demands):
+async def run_allocation(config):
+    slot_multiplier = config.getint("Slots", "multiplier")
+    max_iterations = config.getint("Slots", "iterations")
+    traffic_demand_level = config.getint("TrafficDemands", "level")
+    action_demand_level = config.getint("ActionDemands", "level")
+    joint_actions_allocation = False
+    change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
+    change_action_demands = not config.getboolean("ActionDemands", "fixed")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
     # coin_bc = minizinc.Solver.load(Path("./config.msc"))
@@ -152,7 +177,7 @@ async def run_allocation(slot_multiplier, max_iterations, demand_level, joint_ac
                                  [[15, 0, 0, 0, 0], [1, 16, 0, 0, 0], [0, 0, 16, 0, 0], [0, 0, 0, 15, 0], [0, 0, 0, 1, 16]]]
     initial_function_placement = [[[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]], [[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]]]
     remaining_time_slots = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
-    service_demands = gen_traffic_demand_information(1, initial_function_placement, demand_level,
+    service_demands = gen_traffic_demand_information(1, initial_function_placement, traffic_demand_level,
                                                      change_traffic_demands)
     target_placement["serviceDemands"] = service_demands
     target_placement["initialDemandAllocation"] = initial_demand_allocation
@@ -201,12 +226,13 @@ async def run_allocation(slot_multiplier, max_iterations, demand_level, joint_ac
         orchestration_allocation["targetDemandAllocationCost"] = targetDemandAllocationCost
         orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
-        service_demands = gen_traffic_demand_information(iterations, initial_function_placement, demand_level,
+        service_demands = gen_traffic_demand_information(iterations, initial_function_placement, traffic_demand_level,
                                                          change_traffic_demands)
         orchestration_allocation["serviceDemands"] = service_demands
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounter,
-                                                           action_time_slots, demand_level, change_action_demands)
+                                                           action_time_slots, action_demand_level,
+                                                           change_action_demands)
         orchestration_allocation["initialActionCounter"] = action_allocation["initialActionCounter"]
         orchestration_allocation["actionDemands"] = action_allocation["actionDemands"]
         orchestration_allocation["extraTimeSlots"] = remaining_time_slots
@@ -247,4 +273,8 @@ async def run_allocation(slot_multiplier, max_iterations, demand_level, joint_ac
 # print(get_last_slot([[[2, 3], [1, 6], [0, 4]], [[-2, 5], [0, -3], [2, 10]]], 3))
 # print(round_sig(-3454324234, 20))
 
-asyncio.run(run_allocation(3, 4, 15, False, False, False))
+file_config = load_config()
+decimal_ctx = decimal.Context()
+decimal_ctx.prec = 20
+
+asyncio.run(run_allocation(file_config))
