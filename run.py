@@ -22,12 +22,14 @@ def load_config():
         new_config['TrafficDemands']['fixed'] = 'yes'
         new_config['TrafficDemands']['level'] = '100'
         new_config['TrafficDemands']['min-demand'] = '5'
+        new_config['TrafficDemands']['trend-threshold'] = '4'
         new_config['ActionDemands'] = {}
         new_config['ActionDemands']['fixed'] = 'yes'
         new_config['ActionDemands']['level'] = '15'
         new_config['Allocation'] = {}
         new_config['Allocation']['optimize-resources'] = 'no'
         new_config['Allocation']['service-alternating'] = 'no'
+        new_config['Allocation']['initial-demand-level'] = '80'
         with open('config.cfg', 'w') as configfile:
             new_config.write(configfile)
         exit()
@@ -148,14 +150,12 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
     return result
 
 
-def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand_level, change_traffic_demands):
+def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand_level, change_traffic_demands,
+                                   traffic_trend_threshold):
     # traffic_demands = [[40, 15, 20, 5, 25], [15, 20, 30, 15, 20]]
     # return traffic_demands
     traffic_demands = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]
-    if change_traffic_demands:
-        random.seed(iteration)
-    else:
-        random.seed(1)
+    random.seed(1)
 
     min_demand = traffic_min_demand
     for s in range(2):
@@ -170,8 +170,67 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
                 traffic_demands[s][locations[l]] = min_demand + rand_demand
                 to_allocate -= rand_demand
 
-    print(traffic_demands)
+    print("Traffic Demands: {}".format(traffic_demands))
+
+    if change_traffic_demands and iteration > 1:
+        threshold_indicator = iteration % traffic_trend_threshold
+        if threshold_indicator == 0:
+            threshold_indicator = traffic_trend_threshold
+        step_indicator = math.floor((iteration - 1) / traffic_trend_threshold) + 1
+        direction_indicator = 1
+        if step_indicator % 2 == 0:
+            direction_indicator = -1
+
+        # print("{}: {}/{}/{}".format(iteration, threshold_indicator, step_indicator, direction_indicator))
+        random.seed(iteration)
+        for s in range(2):
+            for l in range(5):
+                step = math.ceil(traffic_demands[s][l] / 10.0)
+                change = direction_indicator * (threshold_indicator - 1) * step
+                if step_indicator % 2 == 0:
+                    change += (traffic_trend_threshold - 1) * step
+                traffic_demands[s][l] = traffic_demands[s][l] + change
+
+                # if threshold_indicator != 1000:
+                traffic_demands[s][l] = traffic_demands[s][l] + direction_indicator * random.randint(0, min([step, min_demand]))
+                if traffic_demands[s][l] < 0:
+                    traffic_demands[s][l] = 0
+                    # raise Exception("Negative Traffic Generated")
+
+    test = False
+    if test and change_traffic_demands and iteration == 1:
+        for i in range(10):
+            next_demand = gen_traffic_demand_information(2 + i, traffic_min_demand, traffic_demand_level,
+                                                         change_traffic_demands, traffic_trend_threshold)
+            print("{}: Traffic Demands: {}".format(2 + i, next_demand))
+        exit(0)
     return traffic_demands
+
+
+def gen_initial_function_placement(initial_demand_level, function_requirements):
+    initial_function_placement = [[[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]],
+                                  [[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]]]
+
+    for s in range(len(initial_function_placement)):
+        demand = 0
+        vlb_count = 0
+        while demand < initial_demand_level:
+            vlb_count += 1
+            max_loc_capacity = get_location_capacity(vlb_count, vlb_count*2, function_requirements)
+            demand = max_loc_capacity * 5
+
+        for l in range(5):
+            initial_function_placement[s][l][0] = vlb_count
+            initial_function_placement[s][l][1] = vlb_count * 2
+
+    print("Initial Allocation: {}".format(initial_function_placement))
+    return initial_function_placement
+
+
+def get_location_capacity(vlb_plc, vdns_plc, function_requirements):
+    max_loc_capacity = min([vlb_plc * function_requirements[0][2],
+                            vdns_plc * function_requirements[1][2]])
+    return max_loc_capacity
 
 
 def gen_initial_demand_allocation(service_demands, initial_function_placement, function_requirements):
@@ -186,8 +245,8 @@ def gen_initial_demand_allocation(service_demands, initial_function_placement, f
         demand = [0] * loc_num
         capacity = [0] * loc_num
         for l in range(loc_num):
-            max_loc_capacity = min([initial_function_placement[s][l][0]*function_requirements[0][2],
-                                    initial_function_placement[s][l][1]*function_requirements[1][2]])
+            max_loc_capacity = get_location_capacity(initial_function_placement[s][l][0],
+                                                     initial_function_placement[s][l][1], function_requirements)
             initial_demand_allocation[s][l] = [0] * loc_num
             initial_demand_allocation[s][l][l] = min([max_loc_capacity, service_demands[s][l]])
             demand[l] += initial_demand_allocation[s][l][l]
@@ -212,12 +271,14 @@ async def run_allocation(config):
     max_remaining_slots = config.getint("Slots", "max-remaining")
     traffic_demand_level = config.getint("TrafficDemands", "level")
     traffic_min_demand = config.getint("TrafficDemands", "min-demand")
+    traffic_trend_threshold = config.getint("TrafficDemands", "trend-threshold")
     action_demand_level = config.getint("ActionDemands", "level")
     joint_actions_allocation = False
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
     optimize_resources = config.getboolean("Allocation", "optimize-resources")
     service_alternating = config.getboolean("Allocation", "service-alternating")
+    initial_demand_level = config.getint("Allocation", "initial-demand-level")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
     # coin_bc = minizinc.Solver.load(Path("./config.msc"))
@@ -241,8 +302,8 @@ async def run_allocation(config):
     function_requirements = [[4, 8, 5],  # vLB_1
                              [2, 4, 2]]  # vDNS_1
     service_demands = gen_traffic_demand_information(1, traffic_min_demand, traffic_demand_level,
-                                                     change_traffic_demands)
-    initial_function_placement = [[[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]], [[4, 8], [4, 8], [4, 8], [4, 8], [4, 8]]]
+                                                     change_traffic_demands, traffic_trend_threshold)
+    initial_function_placement = gen_initial_function_placement(initial_demand_level, function_requirements)
     initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
                                                               function_requirements)
     remaining_time_slots = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
@@ -300,7 +361,7 @@ async def run_allocation(config):
         orchestration_allocation["maxFunctionRequirements"] = function_requirements
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
         service_demands = gen_traffic_demand_information(iterations, traffic_min_demand, traffic_demand_level,
-                                                         change_traffic_demands)
+                                                         change_traffic_demands, traffic_trend_threshold)
         orchestration_allocation["serviceDemands"] = service_demands
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounter,
