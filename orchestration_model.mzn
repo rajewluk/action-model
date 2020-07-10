@@ -162,7 +162,7 @@ constraint forall(i in SERVICE_INSTANCES, l1 in LOCATIONS, t in ACTION_TIME_SLOT
 );
 
 constraint forall(i in SERVICE_INSTANCES)(
-  avgSlaSatisfaction[i] = sum(l1 in LOCATIONS, t in TIME_SLOTS)(slaSatisfaction[i, l1, t])/(NUM_TIME_SLOTS * NUM_LOCATION * MAX_SLA)
+  avgSlaSatisfaction[i] = sum(l1 in LOCATIONS, t in ACTION_TIME_SLOTS)(slaSatisfaction[i, l1, t])/((NUM_TIME_SLOTS - 1) * NUM_LOCATION * MAX_SLA)
 );
 
 constraint forall(i in SERVICE_INSTANCES, l1 in LOCATIONS, t in TIME_SLOTS)(

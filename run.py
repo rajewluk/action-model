@@ -6,31 +6,49 @@ import random
 import decimal
 import time
 import math
+import ast
+import csv
+import numpy as np
+import plotly
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
 
 
-def load_config():
+def load_config(config_name, main_config):
     new_config = configparser.ConfigParser()
     try:
-        new_config.read_file(open('config.cfg'))
+        new_config.read_file(open(config_name))
     except FileNotFoundError:
-        print("NO CONFIGURATION FILE. SET TO DEFAULTS. PLEASE VERIFY")
-        new_config['Slots'] = {}
-        new_config['Slots']['multiplier'] = '3'
-        new_config['Slots']['iterations'] = '4'
-        new_config['Slots']['max-remaining'] = '2'
-        new_config['TrafficDemands'] = {}
-        new_config['TrafficDemands']['fixed'] = 'yes'
-        new_config['TrafficDemands']['level'] = '100'
-        new_config['TrafficDemands']['min-demand'] = '5'
-        new_config['TrafficDemands']['trend-threshold'] = '4'
-        new_config['ActionDemands'] = {}
-        new_config['ActionDemands']['fixed'] = 'yes'
-        new_config['ActionDemands']['level'] = '15'
-        new_config['Allocation'] = {}
-        new_config['Allocation']['optimize-resources'] = 'no'
-        new_config['Allocation']['service-alternating'] = 'no'
-        new_config['Allocation']['initial-demand-level'] = '80'
-        with open('config.cfg', 'w') as configfile:
+        print("NO CONFIGURATION FILE {}. SET TO DEFAULTS. PLEASE VERIFY".format(config_name))
+        if (main_config):
+            new_config['Slots'] = {}
+            new_config['Slots']['multiplier'] = '3'
+            new_config['Slots']['iterations'] = '5'
+            new_config['Slots']['max-remaining'] = '2'
+            new_config['TrafficDemands'] = {}
+            new_config['TrafficDemands']['fixed'] = 'yes'
+            new_config['TrafficDemands']['level'] = '100'
+            new_config['TrafficDemands']['min-demand'] = '5'
+            new_config['TrafficDemands']['trend-threshold'] = '4'
+            new_config['ActionDemands'] = {}
+            new_config['ActionDemands']['fixed'] = 'yes'
+            new_config['ActionDemands']['level'] = '15'
+            new_config['Allocation'] = {}
+            new_config['Allocation']['optimize-resources'] = 'no'
+            new_config['Allocation']['service-alternating'] = 'no'
+            new_config['Allocation']['initial-demand-level'] = '80'
+            new_config['Statistics'] = {}
+            new_config['Statistics']['max-sla'] = '10000'
+        else:
+            new_config['Simulation'] = {}
+            new_config['Simulation']['results-file'] = 'results.csv'
+            new_config['Simulation']['append-results'] = 'yes'
+            new_config['Slots'] = {}
+            new_config['TrafficDemands'] = {}
+            new_config['ActionDemands'] = {}
+            new_config['Allocation'] = {}
+        with open(config_name, 'w') as configfile:
             new_config.write(configfile)
         exit()
 
@@ -38,12 +56,36 @@ def load_config():
 
 
 def get_last_slot(tab, dimensions, level=1):
+    if level == 1:
+        tab = tab.copy()
     if level == dimensions:
         return tab[-1]
     else:
         for i in range(len(tab)):
             tab[i] = get_last_slot(tab[i], dimensions, level + 1)
         return tab
+
+
+def remove_first_slot(tab, dimensions, level=1):
+    if level == 1:
+        tab = tab.copy()
+    if level == dimensions:
+        return tab[1:]
+    else:
+        for i in range(len(tab)):
+            tab[i] = remove_first_slot(tab[i], dimensions, level + 1)
+        return tab
+
+
+def localize_floats(row):
+    return [
+        str(el).replace('.', ',') if isinstance(el, float) else el
+        for el in row
+    ]
+
+
+decimal_ctx = decimal.Context()
+decimal_ctx.prec = 20
 
 
 def non_exp_repr(f):
@@ -265,7 +307,17 @@ def gen_initial_demand_allocation(service_demands, initial_function_placement, f
     return initial_demand_allocation
 
 
-async def run_allocation(config):
+def gen_result_file_name(config, sim_seq_number):
+    slot_multiplier = config.getint("Slots", "multiplier")
+    traffic_demand_level = config.getint("TrafficDemands", "level")
+    action_demand_level = config.getint("ActionDemands", "level")
+    change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
+    change_action_demands = not config.getboolean("ActionDemands", "fixed")
+    return "sn_{}-tr_{}_{}-ac_{}-{}-sq_{}.csv".format(slot_multiplier, change_traffic_demands, traffic_demand_level,
+                                                      action_demand_level, change_action_demands, sim_seq_number).lower()
+
+
+async def run_allocation(config, sim_seq_number, res_file):
     slot_multiplier = config.getint("Slots", "multiplier")
     max_iterations = config.getint("Slots", "iterations")
     max_remaining_slots = config.getint("Slots", "max-remaining")
@@ -279,6 +331,7 @@ async def run_allocation(config):
     optimize_resources = config.getboolean("Allocation", "optimize-resources")
     service_alternating = config.getboolean("Allocation", "service-alternating")
     initial_demand_level = config.getint("Allocation", "initial-demand-level")
+    max_sla = config.getfloat("Statistics", "max-sla")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
     # coin_bc = minizinc.Solver.load(Path("./config.msc"))
@@ -294,6 +347,7 @@ async def run_allocation(config):
 
     target_placement = minizinc.Instance(coin_bc, placement_model)
     target_placement["NUM_TIME_SLOTS"] = 1
+    target_placement["MAX_SLA"] = max_sla
     target_placement["ITERATION_NO"] = 1
     target_placement["MAX_REMAINING_SLOTS"] = max_remaining_slots
     target_placement["MINIMIZE_ALLOCATION"] = optimize_resources
@@ -342,12 +396,14 @@ async def run_allocation(config):
     roundPlacementSolution = round_sig(final_placement_solution.allocationObjective, 2)
     final_objective = roundPlacementSolution + 1
     total_start_time = time.time()
-    while iterations <= max_iterations and final_objective > roundPlacementSolution:
+    res_writer = csv.writer(res_file, dialect="excel", delimiter=";")
+    while iterations < max_iterations:  #  and final_objective > roundPlacementSolution:
         start_time = time.time()
         iterations += 1
         print("{} Calculation for {} time slots".format(iterations, action_time_slots))
         orchestration_allocation = minizinc.Instance(coin_bc, orchestration_model)
         orchestration_allocation["NUM_TIME_SLOTS"] = num_time_slots
+        orchestration_allocation["MAX_SLA"] = max_sla
         orchestration_allocation["ITERATION_NO"] = iterations
         orchestration_allocation["MAX_REMAINING_SLOTS"] = max_remaining_slots
         orchestration_allocation["MINIMIZE_ALLOCATION"] = optimize_resources
@@ -395,6 +451,29 @@ async def run_allocation(config):
                 totalActionCounter[i][j] = totalActionCounter[i][j] + final_allocation_solution.totalActionCounter[i][j]
                 lastActionCounter[i][j] = final_allocation_solution.totalActionCounter[i][j]
 
+        res_writer.writerow(localize_floats(
+            [iterations, round_sig(final_allocation_solution.allocationObjective, 2),
+             round_sig(np.average(remove_first_slot(final_allocation_solution.slaSatisfaction[0], 2)) / max_sla, 3),
+             round_sig(np.min(remove_first_slot(final_allocation_solution.slaSatisfaction[0], 2)) / max_sla, 3),
+             round_sig(np.max(remove_first_slot(final_allocation_solution.slaSatisfaction[0], 2)) / max_sla, 3),
+             round_sig(np.var(remove_first_slot(final_allocation_solution.slaSatisfaction[0], 2)) / max_sla, 3),
+             round_sig(np.std(remove_first_slot(final_allocation_solution.slaSatisfaction[0], 2)) / max_sla, 3),
+             final_allocation_solution.totalFunctionPlacement[0][0],
+             final_allocation_solution.totalFunctionPlacement[0][1],
+             final_allocation_solution.totalActionCounter[0][0],
+             final_allocation_solution.totalActionCounter[0][1],
+             round_sig(np.average(remove_first_slot(final_allocation_solution.slaSatisfaction[1], 2)) / max_sla, 3),  # AVG SLA
+             round_sig(np.min(remove_first_slot(final_allocation_solution.slaSatisfaction[1], 2)) / max_sla, 3),  # MIN SLA
+             round_sig(np.max(remove_first_slot(final_allocation_solution.slaSatisfaction[1], 2)) / max_sla, 3),  # MAX SLA
+             round_sig(np.var(remove_first_slot(final_allocation_solution.slaSatisfaction[1], 2)) / max_sla, 3),  # VAR SLA
+             round_sig(np.std(remove_first_slot(final_allocation_solution.slaSatisfaction[1], 2)) / max_sla, 3),  # STD SLA
+             final_allocation_solution.totalFunctionPlacement[1][0],  # LB FP
+             final_allocation_solution.totalFunctionPlacement[1][1],  # DNS FP
+             final_allocation_solution.totalActionCounter[1][0],  # LB ACT
+             final_allocation_solution.totalActionCounter[1][1]  # DNS ACT
+             ]))
+        res_file.flush()
+
     print("Final Solution: {:.4f} after {} time slots".format(final_objective, (num_time_slots - 1) * iterations))
     print("SLA S1: {:.3f} S2: {:.3f}".format(avgSla[0] / iterations, avgSla[1] / iterations))
     print("FNP S1: [{},{}] S2: [{},{}]".format(totalPlacement[0][0], totalPlacement[0][1], totalPlacement[1][0],
@@ -404,11 +483,90 @@ async def run_allocation(config):
                                                totalActionCounter[1][1]))
 
 
-# print(get_last_slot([[[2, 3], [1, 6], [0, 4]], [[-2, 5], [0, -3], [2, 10]]], 3))
-# print(round_sig(-3454324234, 20))
+def set_res_file_header(res_file):
+    res_writer = csv.writer(res_file, delimiter=";")
+    res_writer.writerow(['Iter', 'Result',
+                         'S1_AVG_SLA',
+                         'S1_MIN_SLA',
+                         'S1_MAX_SLA',
+                         'S1_VAR_SLA',
+                         'S1_STD_SLA',
+                         'S1_LB_FP',
+                         'S1_DNS_FP',
+                         'S1_LB_ACT',
+                         'S1_DNS_ACT',
+                         'S2_AVG_SLA',
+                         'S2_MIN_SLA',
+                         'S2_MAX_SLA',
+                         'S2_VAR_SLA',
+                         'S2_STD_SLA',
+                         'S2_LB_FP',
+                         'S2_DNS_FP',
+                         'S2_LB_ACT',
+                         'S2_DNS_ACT'])
+    res_file.flush()
 
-file_config = load_config()
-decimal_ctx = decimal.Context()
-decimal_ctx.prec = 20
 
-asyncio.run(run_allocation(file_config))
+def run_simulation():
+    main_config = load_config('config.cfg', True)
+
+    plan_config = load_config('plan.cfg', False)
+    res_folder_name = Path(plan_config['Simulation'].get('results-folder'))
+    app_res_file = plan_config['Simulation'].getboolean('append-results')
+    #df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
+
+    #pd.options.plotting.backend = "plotly"
+
+    # Plot
+    #fig = df.plot(x='Date', y=['AAPL.High', 'AAPL.Low'])
+
+    #fig.show()
+
+    values = {}
+    options_size = 0
+    for section in plan_config.sections():
+        if "Simulation" == section:
+            continue
+        for key in plan_config[section]:
+            try:
+                main_config[section]
+            except KeyError:
+                print("Section '{}' not recognized in main config file".format(section))
+                exit(1)
+            try:
+                main_config[section][key]
+            except KeyError:
+                print("Unrecognized '{}' parameter in section '{}' of main config file".format(key, section))
+                exit(1)
+            tmp_values = ast.literal_eval(plan_config[section].get(key))
+            if 0 < options_size != len(tmp_values):
+                print("Mismatch of option size in the simulation plan")
+                exit(1)
+            else:
+                options_size = len(tmp_values)
+            if section not in values:
+                values[section] = {}
+            values[section][key] = tmp_values
+
+    if not Path.exists(res_folder_name) or not Path.is_dir(res_folder_name):
+        Path.mkdir(res_folder_name)
+
+    if len(values) == 0:
+        print("Singular simulation test")
+        res_file_name = "{}/{}".format(res_folder_name, gen_result_file_name(main_config, 1))
+        with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
+            set_res_file_header(res_file)
+            asyncio.run(run_allocation(main_config, 1, res_file))
+    else:
+        print("Simulation Values: {}".format(values))
+        for i in range(options_size):
+            for section in values:
+                for key in values[section]:
+                    main_config.set(section, key, str(values[section][key][i]))
+            res_file_name = "{}/{}".format(res_folder_name, gen_result_file_name(main_config, i + 1))
+            with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
+                set_res_file_header(res_file)
+                asyncio.run(run_allocation(main_config, i + 1, res_file))
+
+
+run_simulation()
