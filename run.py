@@ -37,6 +37,7 @@ def load_config(config_name, main_config):
             new_config['Allocation'] = {}
             new_config['Allocation']['optimize-resources'] = 'no'
             new_config['Allocation']['service-alternating'] = 'no'
+            new_config['Allocation']['allocate-actions'] = 'yes'
             new_config['Allocation']['initial-demand-level'] = '80'
             new_config['Statistics'] = {}
             new_config['Statistics']['max-sla'] = '10000'
@@ -44,6 +45,13 @@ def load_config(config_name, main_config):
             new_config['Simulation'] = {}
             new_config['Simulation']['results-file'] = 'results.csv'
             new_config['Simulation']['append-results'] = 'yes'
+            new_config['Simulation']['completed'] = 'no'
+            new_config['Plot'] = {}
+            new_config['Plot']['y-column'] = "S1_AVG_SLA"
+            new_config['Plot']['title'] = "Average SLA"
+            new_config['Plot']['x-title'] = "Iteration"
+            new_config['Plot']['series-label'] = "level {}"
+
             new_config['Slots'] = {}
             new_config['TrafficDemands'] = {}
             new_config['ActionDemands'] = {}
@@ -512,7 +520,12 @@ def run_simulation():
 
     plan_config = load_config('plan.cfg', False)
     res_folder_name = Path(plan_config['Simulation'].get('results-folder'))
+    completed = plan_config['Simulation'].getboolean('completed')
     app_res_file = plan_config['Simulation'].getboolean('append-results')
+
+    if completed:
+        print("Simulation was already completed")
+        return
     #df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
 
     #pd.options.plotting.backend = "plotly"
@@ -525,7 +538,7 @@ def run_simulation():
     values = {}
     options_size = 0
     for section in plan_config.sections():
-        if "Simulation" == section:
+        if "Simulation" == section or "Plot" == section:
             continue
         for key in plan_config[section]:
             try:
@@ -567,6 +580,10 @@ def run_simulation():
             with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
                 set_res_file_header(res_file)
                 asyncio.run(run_allocation(main_config, i + 1, res_file))
+
+    plan_config['Simulation']['completed'] = 'yes'
+    with open('plan.cfg', 'w') as configfile:
+        plan_config.write(configfile)
 
 
 run_simulation()
