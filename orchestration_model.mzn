@@ -63,8 +63,14 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of var 0..NUM_TIME_SLOTS: rem
 % total actual THR demand in each location
 array[SERVICE_INSTANCES, LOCATIONS, LOCATIONS, TIME_SLOTS] of var 0..max([locationCapacity[l, THR] | l in LOCATIONS]): demandAllocations;
 
+% total actual THR demand reduction in each location
+array[SERVICE_INSTANCES, LOCATIONS, LOCATIONS, TIME_SLOTS] of var 0..max([locationCapacity[l, THR] | l in LOCATIONS]): demandAllocationsReduction;
+
 % total optimal THR demand in each location
 array[SERVICE_INSTANCES, LOCATIONS, TIME_SLOTS] of var 0..max([locationCapacity[l, THR] | l in LOCATIONS]): balancerDemandAllocations;
+
+% total actual THR demand reduction in each location
+array[SERVICE_INSTANCES, LOCATIONS, TIME_SLOTS] of var 0..max([locationCapacity[l, THR] | l in LOCATIONS]): balancerDemandAllocationsReduction;
 
 % total incoming THR in each location
 array[LOCATIONS, TIME_SLOTS] of var 0..max([locationCapacity[l, THR] | l in LOCATIONS]): throughputInLocations;
@@ -131,7 +137,11 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t 
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in TIME_SLOTS)(
-    serviceCapacity[i, l, f, t] = (functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t]) * maxFunctionRequirements[f, THR]
+    if JOINT_SCHEDULING then
+        serviceCapacity[i, l, f, t] = (functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t]) * maxFunctionRequirements[f, THR]
+    else
+        serviceCapacity[i, l, f, t] = functionPlacement[i, l, f, t] * maxFunctionRequirements[f, THR]
+    endif
 );
 
 % initial allocation cannot be greater than the capacity for services in locations
@@ -158,7 +168,11 @@ constraint forall(i in SERVICE_INSTANCES, l1 in LOCATIONS)(
 );
 
 constraint forall(i in SERVICE_INSTANCES, l1 in LOCATIONS, t in ACTION_TIME_SLOTS)(
-  slaSatisfaction[i, l1, t] = sum(l2 in LOCATIONS)(demandAllocations[i, l1, l2, t]*(1-locationDistance[l1, l2]/MAX_DISTANCE)/serviceDemands[i, l1]) * MAX_SLA
+    if JOINT_SCHEDULING then
+        slaSatisfaction[i, l1, t] = sum(l2 in LOCATIONS)(demandAllocations[i, l1, l2, t]*(1-locationDistance[l1, l2]/MAX_DISTANCE)/serviceDemands[i, l1]) * MAX_SLA
+    else
+        slaSatisfaction[i, l1, t] = sum(l2 in LOCATIONS)((demandAllocations[i, l1, l2, t] - demandAllocationsReduction[i, l1, l2, t])*(1-locationDistance[l1, l2]/MAX_DISTANCE)/serviceDemands[i, l1]) * MAX_SLA
+    endif
 );
 
 constraint forall(i in SERVICE_INSTANCES)(
@@ -311,6 +325,18 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t 
     functionPlacementReduction[i, l, f, t] < functionPlacement[i, l, f, t]
 );
 
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS) (
+    sum(l2 in LOCATIONS)(demandAllocationsReduction[i, l2, l, t]) == max([0, sum(l2 in LOCATIONS)(demandAllocations[i, l2, l, t]) - (functionPlacement[i, l, vDNS_1, t] - functionPlacementReduction[i, l, vDNS_1, t])*maxFunctionRequirements[vDNS_1, THR]])
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS) (
+    balancerDemandAllocationsReduction[i, l, t] = max([0, balancerDemandAllocations[i, l, t] - (functionPlacement[i, l, vLB_1, t] - functionPlacementReduction[i, l, vLB_1, t])*maxFunctionRequirements[vLB_1, THR], ])
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, l2 in LOCATIONS, t in ACTION_TIME_SLOTS) (
+    demandAllocationsReduction[i, l, l2, t] <= demandAllocations[i, l, l2, t]
+);
+
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
     %functionCapacityReservation[i, l, f, t] = sum(a in ACTION_TYPE where actionProperties[a, ACT_RES_LOCK] > 0 /\ a != SCALE_OUT)(actionPlacement[i, l, f, a, t]) + sum(a in ACTION_TYPE where actionProperties[a, ACT_RES_LOCK] > 0 /\ a == SCALE_OUT)(actionPlacement[i, l, f, a, t]-actionCounter[i, l, f, a, t])
     functionCapacityReservation[i, l, f, t] = sum(a in ACTION_TYPE where actionProperties[a, ACT_RES_LOCK] > 0)(actionPlacement[i, l, f, a, t])
@@ -394,6 +420,9 @@ output ["Objective: \(allocationObjective)/\(lastTimeSlotObjective)"] ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "|" else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nvDNS Allocation in Locations\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[" ++ show_int(2, sum(l2 in LOCATIONS where l2 == l)(demandAllocations[i, l2, l, t])) ++ "," ++ show_int(2, sum(l2 in LOCATIONS where l2 != l)(demandAllocations[i, l, l2, t])) ++ "] " ++
+         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
+       ["\nvDNS Allocation Reduction in Locations\n\(LOCATIONS_ENUM)"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[" ++ show_int(2, sum(l2 in LOCATIONS where l2 == l)(demandAllocationsReduction[i, l2, l, t])) ++ "," ++ show_int(2, sum(l2 in LOCATIONS where l2 != l)(demandAllocationsReduction[i, l, l2, t])) ++ "] " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nDemand Allocation Gap\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ show_int(6, demandGap[i, l, t]) ++ " " ++ 

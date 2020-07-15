@@ -8,12 +8,14 @@ import configparser
 plan_config = configparser.ConfigParser()
 plan_config.read_file(open('plan.cfg'))
 
-res_folder_name = Path(plan_config['Simulation'].get('results-folder'))
+res_folder_name = plan_config['Simulation'].get('results-folder')
 files = []
-for r, d, f in walk(res_folder_name.name):
-    for file in f:
-        if '.csv' in file:
-            files.append(res_folder_name.joinpath(file))
+p = Path("results/{}".format(res_folder_name))
+for r, d, f in walk("results"):
+    if p.name == Path(r).name:
+        for file in f:
+            if '.csv' in file:
+                files.append(p.joinpath(file))
 
 series = {}
 plot_y_column = plan_config['Plot'].get('y-column')

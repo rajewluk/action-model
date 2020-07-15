@@ -1,4 +1,6 @@
 from pathlib import Path
+from shutil import copyfile
+from shutil import rmtree
 import configparser
 import minizinc
 import asyncio
@@ -15,13 +17,20 @@ import plotly.express as px
 import pandas as pd
 
 
+def print_config(config):
+    for section in dict(config.items()).keys():
+        if len(config.items(section)) > 0:
+            print("[{}]".format(section))
+            print(dict(config.items(section)))
+
+
 def load_config(config_name, main_config):
     new_config = configparser.ConfigParser()
     try:
         new_config.read_file(open(config_name))
     except FileNotFoundError:
         print("NO CONFIGURATION FILE {}. SET TO DEFAULTS. PLEASE VERIFY".format(config_name))
-        if (main_config):
+        if main_config:
             new_config['Slots'] = {}
             new_config['Slots']['multiplier'] = '3'
             new_config['Slots']['iterations'] = '5'
@@ -34,6 +43,7 @@ def load_config(config_name, main_config):
             new_config['ActionDemands'] = {}
             new_config['ActionDemands']['fixed'] = 'yes'
             new_config['ActionDemands']['level'] = '15'
+            new_config['ActionDemands']['trend-threshold'] = '4'
             new_config['Allocation'] = {}
             new_config['Allocation']['optimize-resources'] = 'no'
             new_config['Allocation']['service-alternating'] = 'no'
@@ -54,7 +64,9 @@ def load_config(config_name, main_config):
 
             new_config['Slots'] = {}
             new_config['TrafficDemands'] = {}
+            new_config['TrafficDemands']['fixed'] = 'yes'
             new_config['ActionDemands'] = {}
+            new_config['ActionDemands']['fixed'] = 'yes'
             new_config['Allocation'] = {}
         with open(config_name, 'w') as configfile:
             new_config.write(configfile)
@@ -131,7 +143,7 @@ def round_sig(number, sig):
 
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
                                    total_action_counter, action_slots_number, action_demand_level,
-                                   change_action_demands):
+                                   change_action_demands, action_trend_threshold):
     action_demand = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
                               [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]]
     initial_action_counter = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
@@ -173,9 +185,29 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
         print("Action Schedule")
         new_demand = [[0, 0], [0, 0]]
         random.seed(iteration)
+
+        threshold_indicator = iteration % action_trend_threshold
+        if threshold_indicator == 0:
+            threshold_indicator = action_trend_threshold
+        step_indicator = math.floor((iteration - 1) / action_trend_threshold) + 1
+        direction_indicator = 1
+        if step_indicator % 2 == 0:
+            direction_indicator = -1
+
         for s in range(2):
             for f in range(2):
                 required_demand = action_demand_level * (f + 1)  # twice the amount for DNS
+                if change_action_demands and iteration > 1:
+                    step = required_demand / 10.0
+                    change = direction_indicator * (threshold_indicator - 1) * step
+                    if step_indicator % 2 == 0:
+                        change += (action_trend_threshold - 1) * step
+                    required_demand = required_demand + change
+                    required_demand = required_demand + direction_indicator * random.randint(0, 1)
+                    required_demand = math.ceil(required_demand)
+                    if required_demand < 0:
+                        required_demand = 0
+                        # raise Exception("Negative Traffic Generated")
                 if iteration > 1:
                     diff = required_demand - math.floor(total_action_counter[s][f] / action_slots_number)
                     required_demand += diff
@@ -196,6 +228,18 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                                         new_demand[0][1] * action_slots_number,
                                                         new_demand[1][0] * action_slots_number,
                                                         new_demand[1][1] * action_slots_number))
+
+        test = False
+        if test and change_action_demands and iteration == 1:
+            for i in range(10):
+                next_demand = get_initial_action_information(2 + i, joint_actions_allocation, initial_function_placement,
+                                                             [[new_demand[0][0] * action_slots_number,
+                                                        new_demand[0][1] * action_slots_number],
+                                                        [new_demand[1][0] * action_slots_number,
+                                                        new_demand[1][1] * action_slots_number]], action_slots_number,
+                                                             action_demand_level, change_action_demands,
+                                                             action_trend_threshold)
+            exit(0)
 
     return result
 
@@ -333,12 +377,14 @@ async def run_allocation(config, sim_seq_number, res_file):
     traffic_min_demand = config.getint("TrafficDemands", "min-demand")
     traffic_trend_threshold = config.getint("TrafficDemands", "trend-threshold")
     action_demand_level = config.getint("ActionDemands", "level")
+    action_trend_threshold = config.getint("ActionDemands", "trend-threshold")
     joint_actions_allocation = False
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
     optimize_resources = config.getboolean("Allocation", "optimize-resources")
     service_alternating = config.getboolean("Allocation", "service-alternating")
     initial_demand_level = config.getint("Allocation", "initial-demand-level")
+    allocate_actions = config.getboolean("Allocation", "allocate-actions")
     max_sla = config.getfloat("Statistics", "max-sla")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
@@ -360,6 +406,7 @@ async def run_allocation(config, sim_seq_number, res_file):
     target_placement["MAX_REMAINING_SLOTS"] = max_remaining_slots
     target_placement["MINIMIZE_ALLOCATION"] = optimize_resources
     target_placement["ONE_SERVICE_OPT"] = service_alternating
+    target_placement["JOINT_SCHEDULING"] = allocate_actions
 
     function_requirements = [[4, 8, 5],  # vLB_1
                              [2, 4, 2]]  # vDNS_1
@@ -416,6 +463,7 @@ async def run_allocation(config, sim_seq_number, res_file):
         orchestration_allocation["MAX_REMAINING_SLOTS"] = max_remaining_slots
         orchestration_allocation["MINIMIZE_ALLOCATION"] = optimize_resources
         orchestration_allocation["ONE_SERVICE_OPT"] = service_alternating
+        orchestration_allocation["JOINT_SCHEDULING"] = allocate_actions
         orchestration_allocation["targetDemandAllocations"] = targetDemandAllocations
         orchestration_allocation["functionPlacementTarget"] = functionPlacementTarget
         orchestration_allocation["targetSlaSatisfaction"] = targetSlaSatisfaction
@@ -430,7 +478,7 @@ async def run_allocation(config, sim_seq_number, res_file):
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounter,
                                                            action_time_slots, action_demand_level,
-                                                           change_action_demands)
+                                                           change_action_demands, action_trend_threshold)
         orchestration_allocation["initialActionCounter"] = action_allocation["initialActionCounter"]
         orchestration_allocation["actionDemands"] = action_allocation["actionDemands"]
         orchestration_allocation["extraTimeSlots"] = remaining_time_slots
@@ -519,7 +567,7 @@ def run_simulation():
     main_config = load_config('config.cfg', True)
 
     plan_config = load_config('plan.cfg', False)
-    res_folder_name = Path(plan_config['Simulation'].get('results-folder'))
+    res_folder_name = Path("results/{}".format(plan_config['Simulation'].get('results-folder')))
     completed = plan_config['Simulation'].getboolean('completed')
     app_res_file = plan_config['Simulation'].getboolean('append-results')
 
@@ -551,21 +599,46 @@ def run_simulation():
             except KeyError:
                 print("Unrecognized '{}' parameter in section '{}' of main config file".format(key, section))
                 exit(1)
-            tmp_values = ast.literal_eval(plan_config[section].get(key))
-            if 0 < options_size != len(tmp_values):
-                print("Mismatch of option size in the simulation plan")
-                exit(1)
-            else:
-                options_size = len(tmp_values)
+            try:
+                value = main_config.get(section, key)
+                if value in configparser.RawConfigParser.BOOLEAN_STATES and value != '1' and value != '0':
+                    value = main_config.getboolean(section, key)
+                else:
+                    raise ValueError()
+            except ValueError as e:
+                try:
+                    value = main_config.getint(section, key)
+
+                except ValueError as e:
+                    try:
+                        value = main_config.getfloat(section, key)
+                    except ValueError as e:
+                        value = main_config.get(section, key)
             if section not in values:
                 values[section] = {}
-            values[section][key] = tmp_values
+            if not isinstance(value, bool) and isinstance(value, int) or isinstance(value, float):
+                tmp_values = ast.literal_eval(plan_config[section].get(key))
+                if 0 < options_size != len(tmp_values):
+                    print("Mismatch of option size in the simulation plan")
+                    exit(1)
+                else:
+                    options_size = len(tmp_values)
+                values[section][key] = tmp_values
+            else:
+                values[section][key] = plan_config[section].get(key)
+
+    if Path.exists(res_folder_name) and Path.is_dir(res_folder_name):
+        rmtree(res_folder_name)
 
     if not Path.exists(res_folder_name) or not Path.is_dir(res_folder_name):
         Path.mkdir(res_folder_name)
 
-    if len(values) == 0:
+    copyfile('plan.cfg', '{}/plan.cfg'.format(res_folder_name))
+    copyfile('config.cfg', '{}/config.cfg'.format(res_folder_name))
+
+    if options_size == 0:
         print("Singular simulation test")
+        print(main_config)
         res_file_name = "{}/{}".format(res_folder_name, gen_result_file_name(main_config, 1))
         with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
             set_res_file_header(res_file)
@@ -575,8 +648,12 @@ def run_simulation():
         for i in range(options_size):
             for section in values:
                 for key in values[section]:
-                    main_config.set(section, key, str(values[section][key][i]))
+                    if isinstance(values[section][key], list):
+                        main_config.set(section, key, str(values[section][key][i]))
+                    else:
+                        main_config.set(section, key, str(values[section][key]).lower())
             res_file_name = "{}/{}".format(res_folder_name, gen_result_file_name(main_config, i + 1))
+            print_config(main_config)
             with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
                 set_res_file_header(res_file)
                 asyncio.run(run_allocation(main_config, i + 1, res_file))
