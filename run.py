@@ -45,7 +45,7 @@ def load_config(config_name, main_config):
             new_config['ActionDemands']['level'] = '15'
             new_config['ActionDemands']['trend-threshold'] = '4'
             new_config['Allocation'] = {}
-            new_config['Allocation']['optimize-resources'] = 'no'
+            new_config['Allocation']['optimize-resources'] = 'yes'
             new_config['Allocation']['service-alternating'] = 'no'
             new_config['Allocation']['allocate-actions'] = 'yes'
             new_config['Allocation']['initial-demand-level'] = '80'
