@@ -16,6 +16,9 @@ array[SERVICE_INSTANCES, LOCATIONS] of 0..max([serviceDemands[i, l] | i in SERVI
 %what is the cost of the allocation of demand - on distance basis
 array[SERVICE_INSTANCES, LOCATIONS] of 0.0..MAX_DISTANCE: targetDemandAllocationCost;% = array2d(SERVICE_INSTANCES, LOCATIONS, [40.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
 
+% the amount of functions reserved for
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of 0..100: functionReservationForActions;
+
 % initial allocation of actions
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100: initialActionCounter;
 
@@ -140,7 +143,7 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t 
     if JOINT_SCHEDULING then
         serviceCapacity[i, l, f, t] = (functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t]) * maxFunctionRequirements[f, THR]
     else
-        serviceCapacity[i, l, f, t] = functionPlacement[i, l, f, t] * maxFunctionRequirements[f, THR]
+        serviceCapacity[i, l, f, t] = max([0, functionPlacement[i, l, f, t] - functionReservationForActions[i, l, f]]) * maxFunctionRequirements[f, THR]
     endif
 );
 
@@ -457,8 +460,8 @@ output ["Objective: \(allocationObjective)/\(lastTimeSlotObjective)"] ++
        ["\nFunction capacity reservation"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(functionCapacityReservation[i, l, vLB_1, t]),\(functionCapacityReservation[i, l, vDNS_1, t])]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
-       ["\nAVG SLA Satisfaction Level"] ++
-       ["\nSLA: [" ++ show_float(4, 3, avgSlaSatisfaction[1]) ++ ", " ++ show_float(4, 3, avgSlaSatisfaction[2]) ++ "]"] ++
+       ["\nIteration Statistics"] ++
+       ["\nAVG SLA: [" ++ show_float(4, 3, avgSlaSatisfaction[1]) ++ ", " ++ show_float(4, 3, avgSlaSatisfaction[2]) ++ "]"] ++
        ["\nFNP: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalFunctionPlacement[1, f])), \(sum(f in FUNCTION_TYPE)(totalFunctionPlacement[2, f]))]"] ++
        ["\nACT: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalActionCounter[1, f])), \(sum(f in FUNCTION_TYPE)(totalActionCounter[2, f]))]"] ++
        ["\nTHR: \(sum(l in LOCATIONS)(throughputInLocations[l, NUM_TIME_SLOTS]))/\(sum(l in LOCATIONS)(locationCapacity[l, THR]))"] ++

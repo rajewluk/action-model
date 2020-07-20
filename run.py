@@ -48,6 +48,7 @@ def load_config(config_name, main_config):
             new_config['Allocation']['optimize-resources'] = 'yes'
             new_config['Allocation']['service-alternating'] = 'no'
             new_config['Allocation']['allocate-actions'] = 'yes'
+            new_config['Allocation']['action-feedback-delay'] = '0'
             new_config['Allocation']['initial-demand-level'] = '80'
             new_config['Statistics'] = {}
             new_config['Statistics']['max-sla'] = '10000'
@@ -139,6 +140,20 @@ def round_sig(number, sig):
                 sig_number = len(str_val) - correction - str_val.count('0')
                 # print("{} - {}".format(value, sig_number))
         return value
+
+
+def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_history):
+    action_feedback = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
+                       [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
+
+    if 0 < action_feedback_delay < iteration:
+        reference_data = action_demand_history[iteration - 1 - action_feedback_delay]['initialActionCounter']
+        for s in range(2):
+            for l in range(5):
+                for f in range(2):
+                    action_feedback[s][l][f] = reference_data[s][l][f][0] + reference_data[s][l][f][1]
+
+    return action_feedback
 
 
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
@@ -264,8 +279,6 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
                 traffic_demands[s][locations[l]] = min_demand + rand_demand
                 to_allocate -= rand_demand
 
-    print("Traffic Demands: {}".format(traffic_demands))
-
     if change_traffic_demands and iteration > 1:
         threshold_indicator = iteration % traffic_trend_threshold
         if threshold_indicator == 0:
@@ -291,6 +304,7 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
                     traffic_demands[s][l] = 0
                     # raise Exception("Negative Traffic Generated")
 
+    print("Traffic Demands: {}".format(traffic_demands))
     test = False
     if test and change_traffic_demands and iteration == 1:
         for i in range(10):
@@ -327,35 +341,58 @@ def get_location_capacity(vlb_plc, vdns_plc, function_requirements):
     return max_loc_capacity
 
 
-def gen_initial_demand_allocation(service_demands, initial_function_placement, function_requirements):
+def gen_initial_demand_allocation(service_demands, initial_function_placement, function_requirements,
+                                  reference_demand_allocation=None):
     # initial_demand_allocation = [[[16, 0, 0, 0, 0], [0, 15, 0, 0, 0], [0, 1, 16, 2, 0], [0, 0, 0, 5, 0],[0, 0, 0, 4, 16]],
     #                             [[15, 0, 0, 0, 0], [1, 16, 0, 0, 0], [0, 0, 16, 0, 0], [0, 0, 0, 15, 0], [0, 0, 0, 1, 16]]]
     initial_demand_allocation = [[[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
                                 [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]]
-    for s in range(len(service_demands)):
-        # print("Demands: {}".format(service_demands[s]))
-        # print(initial_demand_allocation[s])
-        loc_num = len(service_demands[s])
-        demand = [0] * loc_num
-        capacity = [0] * loc_num
-        for l in range(loc_num):
-            max_loc_capacity = get_location_capacity(initial_function_placement[s][l][0],
-                                                     initial_function_placement[s][l][1], function_requirements)
-            initial_demand_allocation[s][l] = [0] * loc_num
-            initial_demand_allocation[s][l][l] = min([max_loc_capacity, service_demands[s][l]])
-            demand[l] += initial_demand_allocation[s][l][l]
-            capacity[l] = max_loc_capacity - initial_demand_allocation[s][l][l]
-        for l in range(loc_num):
-            for s_l in range(loc_num):
-                if capacity[l] == 0:
-                    break
-                if demand[s_l] == service_demands[s][s_l]:
-                    continue
-                initial_demand_allocation[s][s_l][l] = min(capacity[l], service_demands[s][s_l] - demand[s_l])
-                demand[s_l] += initial_demand_allocation[s][s_l][l]
-                capacity[l] -= initial_demand_allocation[s][s_l][l]
 
-        # print(initial_demand_allocation[s])
+    if reference_demand_allocation is None:
+        for s in range(len(service_demands)):
+            # print("Demands: {}".format(service_demands[s]))
+            # print(initial_demand_allocation[s])
+            loc_num = len(service_demands[s])
+            demand = [0] * loc_num
+            capacity = [0] * loc_num
+            for l in range(loc_num):
+                max_loc_capacity = get_location_capacity(initial_function_placement[s][l][0],
+                                                         initial_function_placement[s][l][1], function_requirements)
+                initial_demand_allocation[s][l] = [0] * loc_num
+                initial_demand_allocation[s][l][l] = min([max_loc_capacity, service_demands[s][l]])
+                demand[l] += initial_demand_allocation[s][l][l]
+                capacity[l] = max_loc_capacity - initial_demand_allocation[s][l][l]
+            for l in range(loc_num):
+                for s_l in range(loc_num):
+                    if capacity[l] == 0:
+                        break
+                    if demand[s_l] == service_demands[s][s_l]:
+                        continue
+                    initial_demand_allocation[s][s_l][l] = min(capacity[l], service_demands[s][s_l] - demand[s_l])
+                    demand[s_l] += initial_demand_allocation[s][s_l][l]
+                    capacity[l] -= initial_demand_allocation[s][s_l][l]
+
+            print("Initial demand allocation ({}): ".format(s, initial_demand_allocation[s]))
+    else:
+        initial_demand_allocation = reference_demand_allocation.copy()
+        for s in range(len(service_demands)):
+            loc_num = len(service_demands[s])
+            for l in range(loc_num):
+                allocated_demand = 0
+                for l2 in range(loc_num):
+                    allocated_demand += reference_demand_allocation[s][l][l2]
+                if allocated_demand > service_demands[s][l]:
+                    for l2 in range(loc_num):
+                        diff = allocated_demand - service_demands[s][l]
+                        if l2 != l and initial_demand_allocation[s][l][l2] > 0:
+                            new_allocation = int(np.max([0, initial_demand_allocation[s][l][l2] - diff]))
+                            allocated_demand -= initial_demand_allocation[s][l][l2] - new_allocation
+                            initial_demand_allocation[s][l][l2] = new_allocation
+                            if allocated_demand == service_demands[s][l]:
+                                break
+                    if allocated_demand > service_demands[s][l]:
+                        initial_demand_allocation[s][l][l] = service_demands[s][l]
+
     return initial_demand_allocation
 
 
@@ -385,6 +422,7 @@ async def run_allocation(config, sim_seq_number, res_file):
     service_alternating = config.getboolean("Allocation", "service-alternating")
     initial_demand_level = config.getint("Allocation", "initial-demand-level")
     allocate_actions = config.getboolean("Allocation", "allocate-actions")
+    action_feedback_delay = config.getint("Allocation", "action-feedback-delay")
     max_sla = config.getfloat("Statistics", "max-sla")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
@@ -448,6 +486,7 @@ async def run_allocation(config, sim_seq_number, res_file):
     totalPlacement = [[0, 0], [0, 0]]
     totalActionCounter = [[0, 0], [0, 0]]
     lastActionCounter = [[0, 0], [0, 0]]
+    action_demand_history = list()
     roundPlacementSolution = round_sig(final_placement_solution.allocationObjective, 2)
     final_objective = roundPlacementSolution + 1
     total_start_time = time.time()
@@ -469,16 +508,22 @@ async def run_allocation(config, sim_seq_number, res_file):
         orchestration_allocation["targetSlaSatisfaction"] = targetSlaSatisfaction
         orchestration_allocation["targetDemandGap"] = targetDemandGap
         orchestration_allocation["targetDemandAllocationCost"] = targetDemandAllocationCost
-        orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
         orchestration_allocation["maxFunctionRequirements"] = function_requirements
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
         service_demands = gen_traffic_demand_information(iterations, traffic_min_demand, traffic_demand_level,
                                                          change_traffic_demands, traffic_trend_threshold)
+        initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
+                                                                  function_requirements, initial_demand_allocation)
+        orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
         orchestration_allocation["serviceDemands"] = service_demands
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounter,
                                                            action_time_slots, action_demand_level,
                                                            change_action_demands, action_trend_threshold)
+        action_demand_history.append(action_allocation)
+        function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
+                                                                   action_demand_history)
+        orchestration_allocation["functionReservationForActions"] = function_reservations_for_actions
         orchestration_allocation["initialActionCounter"] = action_allocation["initialActionCounter"]
         orchestration_allocation["actionDemands"] = action_allocation["actionDemands"]
         orchestration_allocation["extraTimeSlots"] = remaining_time_slots
@@ -531,6 +576,7 @@ async def run_allocation(config, sim_seq_number, res_file):
         res_file.flush()
 
     print("Final Solution: {:.4f} after {} time slots".format(final_objective, (num_time_slots - 1) * iterations))
+    print("Final Statistics:")
     print("SLA S1: {:.3f} S2: {:.3f}".format(avgSla[0] / iterations, avgSla[1] / iterations))
     print("FNP S1: [{},{}] S2: [{},{}]".format(totalPlacement[0][0], totalPlacement[0][1], totalPlacement[1][0],
                                                totalPlacement[1][1]))
