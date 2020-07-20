@@ -11,10 +11,24 @@ import math
 import ast
 import csv
 import numpy as np
+import sys
 import plotly
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+
+
+class Logger(object):
+    def __init__(self, log_file):
+        self.terminal = sys.stdout
+        self.log = open(log_file, "w")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        pass
 
 
 def print_config(config):
@@ -25,7 +39,7 @@ def print_config(config):
 
 
 def load_config(config_name, main_config):
-    new_config = configparser.ConfigParser()
+    new_config = configparser.ConfigParser(comment_prefixes='/', allow_no_value=True)
     try:
         new_config.read_file(open(config_name))
     except FileNotFoundError:
@@ -678,6 +692,8 @@ def run_simulation():
 
     if not Path.exists(res_folder_name) or not Path.is_dir(res_folder_name):
         Path.mkdir(res_folder_name)
+
+    sys.stdout = Logger("{}/output.log".format(res_folder_name))
 
     copyfile('plan.cfg', '{}/plan.cfg'.format(res_folder_name))
     copyfile('config.cfg', '{}/config.cfg'.format(res_folder_name))
