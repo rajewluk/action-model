@@ -12,6 +12,7 @@ import ast
 import csv
 import numpy as np
 import sys
+import datetime
 import plotly
 import plotly.graph_objects as go
 import plotly.express as px
@@ -70,7 +71,7 @@ def load_config(config_name, main_config):
             new_config['Statistics']['max-sla'] = '10000'
         else:
             new_config['Simulation'] = {}
-            new_config['Simulation']['results-file'] = 'results.csv'
+            new_config['Simulation']['results-folder'] = 'example'
             new_config['Simulation']['append-results'] = 'yes'
             new_config['Simulation']['completed'] = 'no'
             new_config['Plot'] = {}
@@ -705,6 +706,7 @@ def run_simulation(plan_file):
         Path.mkdir(res_folder_name)
 
     sys.stdout = Logger("{}/output.log".format(res_folder_name))
+    print("START: {}".format(datetime.datetime.now()))
 
     copyfile(plan_file, '{}/plan.cfg'.format(res_folder_name))
     copyfile('config.cfg', '{}/config.cfg'.format(res_folder_name))
@@ -734,6 +736,8 @@ def run_simulation(plan_file):
     plan_config['Simulation']['completed'] = 'yes'
     with open(plan_file, 'w') as configfile:
         plan_config.write(configfile)
+
+    print("STOP: {}".format(datetime.datetime.now()))
 
 
 def main():
