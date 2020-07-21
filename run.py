@@ -52,11 +52,13 @@ def load_config(config_name, main_config):
             new_config['TrafficDemands'] = {}
             new_config['TrafficDemands']['fixed'] = 'yes'
             new_config['TrafficDemands']['level'] = '100'
+            new_config['TrafficDemands']['change-percent'] = '10'
             new_config['TrafficDemands']['min-demand'] = '5'
             new_config['TrafficDemands']['trend-threshold'] = '4'
             new_config['ActionDemands'] = {}
             new_config['ActionDemands']['fixed'] = 'yes'
             new_config['ActionDemands']['level'] = '15'
+            new_config['ActionDemands']['change-percent'] = '10'
             new_config['ActionDemands']['trend-threshold'] = '4'
             new_config['Allocation'] = {}
             new_config['Allocation']['optimize-resources'] = 'yes'
@@ -172,7 +174,7 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
 
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
                                    total_action_counter, action_slots_number, action_demand_level,
-                                   change_action_demands, action_trend_threshold):
+                                   change_action_demands, action_trend_threshold, action_change_percent):
     action_demand = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
                               [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]]
     initial_action_counter = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
@@ -227,7 +229,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
             for f in range(2):
                 required_demand = action_demand_level * (f + 1)  # twice the amount for DNS
                 if change_action_demands and iteration > 1:
-                    step = required_demand / 10.0
+                    step = required_demand * action_change_percent / 100.0
                     change = direction_indicator * (threshold_indicator - 1) * step
                     if step_indicator % 2 == 0:
                         change += (action_trend_threshold - 1) * step
@@ -267,14 +269,14 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                                         [new_demand[1][0] * action_slots_number,
                                                         new_demand[1][1] * action_slots_number]], action_slots_number,
                                                              action_demand_level, change_action_demands,
-                                                             action_trend_threshold)
+                                                             action_trend_threshold, action_change_percent)
             exit(0)
 
     return result
 
 
 def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand_level, change_traffic_demands,
-                                   traffic_trend_threshold):
+                                   traffic_trend_threshold, traffic_change_percent):
     # traffic_demands = [[40, 15, 20, 5, 25], [15, 20, 30, 15, 20]]
     # return traffic_demands
     traffic_demands = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]
@@ -306,7 +308,7 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
         random.seed(iteration)
         for s in range(2):
             for l in range(5):
-                step = math.ceil(traffic_demands[s][l] / 10.0)
+                step = math.ceil(traffic_demands[s][l] * traffic_change_percent / 100.0)
                 change = direction_indicator * (threshold_indicator - 1) * step
                 if step_indicator % 2 == 0:
                     change += (traffic_trend_threshold - 1) * step
@@ -323,7 +325,8 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
     if test and change_traffic_demands and iteration == 1:
         for i in range(10):
             next_demand = gen_traffic_demand_information(2 + i, traffic_min_demand, traffic_demand_level,
-                                                         change_traffic_demands, traffic_trend_threshold)
+                                                         change_traffic_demands, traffic_trend_threshold,
+                                                         traffic_change_percent)
             print("{}: Traffic Demands: {}".format(2 + i, next_demand))
         exit(0)
     return traffic_demands
@@ -427,8 +430,10 @@ async def run_allocation(config, sim_seq_number, res_file):
     traffic_demand_level = config.getint("TrafficDemands", "level")
     traffic_min_demand = config.getint("TrafficDemands", "min-demand")
     traffic_trend_threshold = config.getint("TrafficDemands", "trend-threshold")
+    traffic_change_percent = config.getint("TrafficDemands", "change-percent")
     action_demand_level = config.getint("ActionDemands", "level")
     action_trend_threshold = config.getint("ActionDemands", "trend-threshold")
+    action_change_percent = config.getint("ActionDemands", "change-percent")
     joint_actions_allocation = False
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
@@ -463,7 +468,8 @@ async def run_allocation(config, sim_seq_number, res_file):
     function_requirements = [[4, 8, 5],  # vLB_1
                              [2, 4, 2]]  # vDNS_1
     service_demands = gen_traffic_demand_information(1, traffic_min_demand, traffic_demand_level,
-                                                     change_traffic_demands, traffic_trend_threshold)
+                                                     change_traffic_demands, traffic_trend_threshold,
+                                                     traffic_change_percent)
     initial_function_placement = gen_initial_function_placement(initial_demand_level, function_requirements)
     initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
                                                               function_requirements)
@@ -525,7 +531,8 @@ async def run_allocation(config, sim_seq_number, res_file):
         orchestration_allocation["maxFunctionRequirements"] = function_requirements
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
         service_demands = gen_traffic_demand_information(iterations, traffic_min_demand, traffic_demand_level,
-                                                         change_traffic_demands, traffic_trend_threshold)
+                                                         change_traffic_demands, traffic_trend_threshold,
+                                                         traffic_change_percent)
         initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
                                                                   function_requirements, initial_demand_allocation)
         orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
@@ -533,7 +540,8 @@ async def run_allocation(config, sim_seq_number, res_file):
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounter,
                                                            action_time_slots, action_demand_level,
-                                                           change_action_demands, action_trend_threshold)
+                                                           change_action_demands, action_trend_threshold,
+                                                           action_change_percent)
         action_demand_history.append(action_allocation)
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
                                                                    action_demand_history)
@@ -623,10 +631,10 @@ def set_res_file_header(res_file):
     res_file.flush()
 
 
-def run_simulation():
+def run_simulation(plan_file):
     main_config = load_config('config.cfg', True)
 
-    plan_config = load_config('plan.cfg', False)
+    plan_config = load_config(plan_file, False)
     res_folder_name = Path("results/{}".format(plan_config['Simulation'].get('results-folder')))
     completed = plan_config['Simulation'].getboolean('completed')
     app_res_file = plan_config['Simulation'].getboolean('append-results')
@@ -687,6 +695,9 @@ def run_simulation():
             else:
                 values[section][key] = plan_config[section].get(key)
 
+    if not Path.exists(Path("results")):
+        Path.mkdir(Path("results"))
+
     if Path.exists(res_folder_name) and Path.is_dir(res_folder_name):
         rmtree(res_folder_name)
 
@@ -695,7 +706,7 @@ def run_simulation():
 
     sys.stdout = Logger("{}/output.log".format(res_folder_name))
 
-    copyfile('plan.cfg', '{}/plan.cfg'.format(res_folder_name))
+    copyfile(plan_file, '{}/plan.cfg'.format(res_folder_name))
     copyfile('config.cfg', '{}/config.cfg'.format(res_folder_name))
 
     if options_size == 0:
@@ -721,8 +732,17 @@ def run_simulation():
                 asyncio.run(run_allocation(main_config, i + 1, res_file))
 
     plan_config['Simulation']['completed'] = 'yes'
-    with open('plan.cfg', 'w') as configfile:
+    with open(plan_file, 'w') as configfile:
         plan_config.write(configfile)
 
 
-run_simulation()
+def main():
+    plan_file = "plan.cfg"
+    if len(sys.argv) > 1:
+        plan_file = str(sys.argv[1])
+    run_simulation(plan_file)
+
+
+if __name__ == "__main__":
+    main()
+
