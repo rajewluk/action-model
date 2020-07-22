@@ -556,7 +556,7 @@ async def run_allocation(config, sim_seq_number, res_file):
                                                                processes=1): #, ignore_errors=True):
             if result.solution is None:
                 print("No Solution")
-                continue
+                break
             final_allocation_solution = result.solution
             print("Intermediate Solution: {:.4f}/{:.4f} - {:.0f} seconds".format(result.solution.allocationObjective, result.solution.lastTimeSlotObjective, time.time() - start_time))
 
