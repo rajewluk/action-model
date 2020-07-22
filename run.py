@@ -211,7 +211,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                         new_demand[s][f] += 1
                         counter = 0
 
-        print("Total Demand: [[{},{}], [{},{}]]".format(new_demand[0][0], new_demand[0][1], new_demand[1][0], new_demand[1][1]))
+        print("Action Demands: [[{},{}], [{},{}]]".format(new_demand[0][0], new_demand[0][1], new_demand[1][0], new_demand[1][1]))
 
     else:
         print("Action Schedule")
@@ -256,22 +256,22 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                         new_demand[s][f] += 1
                         counter = 0
 
-        print("Total Demand: [[{},{}], [{},{}]]".format(new_demand[0][0] * action_slots_number,
-                                                        new_demand[0][1] * action_slots_number,
-                                                        new_demand[1][0] * action_slots_number,
-                                                        new_demand[1][1] * action_slots_number))
+        print("[{}] Action Demands: [[{},{}], [{},{}]]".format(iteration, new_demand[0][0] * action_slots_number,
+                                                               new_demand[0][1] * action_slots_number,
+                                                               new_demand[1][0] * action_slots_number,
+                                                               new_demand[1][1] * action_slots_number))
 
-        test = False
-        if test and change_action_demands and iteration == 1:
-            for i in range(10):
-                next_demand = get_initial_action_information(2 + i, joint_actions_allocation, initial_function_placement,
-                                                             [[new_demand[0][0] * action_slots_number,
-                                                        new_demand[0][1] * action_slots_number],
-                                                        [new_demand[1][0] * action_slots_number,
-                                                        new_demand[1][1] * action_slots_number]], action_slots_number,
-                                                             action_demand_level, change_action_demands,
-                                                             action_trend_threshold, action_change_percent)
-            exit(0)
+    test = False
+    if test and iteration == 1:
+        for i in range(10):
+            next_demand = get_initial_action_information(2 + i, joint_actions_allocation, initial_function_placement,
+                                                         [[new_demand[0][0] * action_slots_number,
+                                                           new_demand[0][1] * action_slots_number],
+                                                          [new_demand[1][0] * action_slots_number,
+                                                           new_demand[1][1] * action_slots_number]], action_slots_number,
+                                                         action_demand_level, change_action_demands,
+                                                         action_trend_threshold, action_change_percent)
+        exit(0)
 
     return result
 
@@ -321,14 +321,13 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
                     traffic_demands[s][l] = 0
                     # raise Exception("Negative Traffic Generated")
 
-    print("Traffic Demands: {}".format(traffic_demands))
+    print("[{}] Traffic Demands: {}".format(iteration, traffic_demands))
     test = False
-    if test and change_traffic_demands and iteration == 1:
+    if test and iteration == 1:
         for i in range(10):
             next_demand = gen_traffic_demand_information(2 + i, traffic_min_demand, traffic_demand_level,
                                                          change_traffic_demands, traffic_trend_threshold,
                                                          traffic_change_percent)
-            print("{}: Traffic Demands: {}".format(2 + i, next_demand))
         exit(0)
     return traffic_demands
 
