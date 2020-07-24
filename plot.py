@@ -46,8 +46,6 @@ diff_folder = plan_config['Plot'].get('result-diff-set')
 if diff_folder is not None:
     diff_files = get_csv_files([diff_folder])
 
-series = {}
-extra_series = {}
 plot_y_columns = plan_config['Plot'].get('y-columns')
 plot_y_columns = ast.literal_eval(plot_y_columns)
 plot_series_label = plan_config['Plot'].get('series-label')
@@ -60,7 +58,6 @@ if sequence_numbers is not None:
     else:
         sequence_numbers = tmp_values
 
-series_size = 0
 y_limits = [sys.maxsize * 2 + 1, -(sys.maxsize * 2 + 1)]
 diff_df = None
 if len(diff_files) > 0:
@@ -70,6 +67,11 @@ else:
     print("{:>50}".format(plot_y_columns[0]))
 
 print('| {:>20} | {:>5}  AVG | {:>5}  MED | {:>5}  MIN | {:>5}  MAX |'.format('SERIES', '', '', '', ''))
+series_size = 0
+series = []
+chart_size = len(plot_y_columns)
+for i in range(chart_size):
+    series.append({})
 for file in files:
     df = pd.read_csv(file, delimiter=";", index_col='Iter', decimal=",")
     file_name = file.name[:-4]
@@ -88,7 +90,9 @@ for file in files:
     print('| {:>20} | {:10.2f} | {:10.2f} | {:10.2f} | {:10.2f} |'.format(series_name, agg_mean, agg_avg, agg_min, agg_max))
     y_limits[0] = np.min([y_limits[0], df_col.min()])
     y_limits[1] = np.max([y_limits[1], df_col.max()])
-    series[series_name] = df_col
+    series[0][series_name] = df_col
+    for i in range(1, chart_size):
+        series[i][series_name] = df[plot_y_columns[i]]
     series_size = df_col.count()
 
 x_limits = [1, series_size]
@@ -108,7 +112,6 @@ if plot_y_limit is not None:
     if len(tmp_values) == 2:
         y_limits = tmp_values
 
-chart_size = len(plot_y_columns)
 fig = plt.figure(figsize=(10, 6))
 if chart_size == 1:
     ax = [plt.subplot(1, 1, 1)]
@@ -126,15 +129,14 @@ ax[0].axis([x_limits[0], x_limits[1], y_limits[0], y_limits[1]])
 ax[0].set_title(plot_title)
 ax[chart_size - 1].set_xlabel(plot_x_title)
 x = range(1, series_size + 1)
-for serie in series:
-    ax[0].plot(x, series[serie], label=serie)
+for i in range(chart_size):
+    for serie in series[i]:
+        ax[i].plot(x, series[i][serie], label=serie)
+    ax[i].set_xlim(x_limits)
 
 # plt.yscale('log')
 if plot_series_label != "":
-    plt.legend()
-
-plt.xlim(x_limits)
-plt.ylim(y_limits)
+    ax[0].legend()
 
 slider_size = int(plan_config['Plot'].get('slider-size'))
 prev_pos = [0]
@@ -156,7 +158,7 @@ def update(val):
         x_min = np.max([x_max - slider_size * 2, x_limits[0]])
 
     for axis in ax:
-        axis.axis([x_min, x_max, y_limits[0], y_limits[1]])
+        axis.set_xlim([x_min, x_max])
     fig.canvas.draw_idle()
 
 
