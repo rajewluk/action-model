@@ -159,11 +159,11 @@ def round_sig(number, sig):
         return value
 
 
-def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_history):
+def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_history, allocate_actions):
     action_feedback = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
                        [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
 
-    if 0 < action_feedback_delay < iteration:
+    if 0 < action_feedback_delay < iteration and not allocate_actions:
         reference_data = action_demand_history[iteration - 1 - action_feedback_delay]['initialActionCounter']
         for s in range(2):
             for l in range(5):
@@ -544,7 +544,7 @@ async def run_allocation(config, sim_seq_number, res_file):
                                                            action_change_percent)
         action_demand_history.append(action_allocation)
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
-                                                                   action_demand_history)
+                                                                   action_demand_history, allocate_actions)
         orchestration_allocation["functionReservationForActions"] = function_reservations_for_actions
         orchestration_allocation["initialActionCounter"] = action_allocation["initialActionCounter"]
         orchestration_allocation["actionDemands"] = action_allocation["actionDemands"]
