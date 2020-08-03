@@ -228,6 +228,10 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
         for s in range(2):
             for f in range(2):
+                total_placement = 0
+                for l in range(5):
+                    total_placement += initial_function_placement[s][l][f]
+                # required_demand = action_demand_level * 0.01  for % change
                 required_demand = action_demand_level * (f + 1)  # twice the amount for DNS
                 if change_action_demands and iteration > 1:
                     step = required_demand * action_change_percent / 100.0
@@ -235,11 +239,15 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                     if step_indicator % 2 == 0:
                         change += (action_trend_threshold - 1) * step
                     required_demand = required_demand + change
-                    required_demand = required_demand + direction_indicator * random.randint(0, 1)
+                    # required_demand = math.ceil(total_placement * required_demand)  for % change
                     required_demand = math.ceil(required_demand)
+                    required_demand = required_demand + direction_indicator * random.randint(0, 1)
                     if required_demand < 0:
                         required_demand = 0
                         # raise Exception("Negative Traffic Generated")
+                else:
+                    # required_demand = math.ceil(total_placement * required_demand)  for % change
+                    required_demand = math.ceil(required_demand)
                 if iteration > 1:
                     diff = required_demand - math.floor(total_action_counter[s][f] / action_slots_number)
                     required_demand += diff

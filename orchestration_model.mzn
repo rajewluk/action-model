@@ -358,18 +358,30 @@ constraint forall(i in SERVICE_INSTANCES, f in FUNCTION_TYPE)(
 %   OBJECTIVE
 %%%%%%%%%%%%%%%%%%
 
+array[SERVICE_INSTANCES, ACTION_TIME_SLOTS] of var float: obj1_parts;
+array[SERVICE_INSTANCES, ACTION_TIME_SLOTS] of var float: obj2_parts;
 
-var float: obj1_1 = sum(i in 1..1, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandGap[i, l, t])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l])*NUM_TIME_SLOTS)*200000;
-var float: obj2_1 = sum(i in 1..1, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandAllocationCost[i, l, t])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE*NUM_TIME_SLOTS)*100;
+constraint forall(i in SERVICE_INSTANCES, t in ACTION_TIME_SLOTS)(
+    obj1_parts[i, t] = sum(l in LOCATIONS)(demandGap[i, l, t])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l])*NUM_TIME_SLOTS)*200000
+);
+
+constraint forall(i in SERVICE_INSTANCES, t in ACTION_TIME_SLOTS)(
+    obj2_parts[i, t] = sum(l in LOCATIONS)(demandAllocationCost[i, l, t])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE*NUM_TIME_SLOTS)*100
+);
+
+var float: obj1_1 = sum(i in 1..1, t in ACTION_TIME_SLOTS)(obj1_parts[i, t]);
+var float: obj2_1 = sum(i in 1..1, t in ACTION_TIME_SLOTS)(obj2_parts[i, t]);
 % var float: obj3_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100;
 % var float: obj3_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100;
 
 var float: obj3_1;
 constraint(
     if JOINT_SCHEDULING > 0 then
-        obj3_1 = max([obj1_1 + obj2_1, sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        %obj3_1 = sum(i in 1..1, t in ACTION_TIME_SLOTS)(max([obj1_parts[i, t] + obj2_parts[i, t], sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
+        obj3_1 = sum(i in 1..1, t in ACTION_TIME_SLOTS)(max([0, sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
     else
-        obj3_1 = max([obj1_1 + obj2_1, sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        %obj3_1 = sum(i in 1..1, t in ACTION_TIME_SLOTS)(max([obj1_parts[i, t] + obj2_parts[i, t], sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
+        obj3_1 = sum(i in 1..1, t in ACTION_TIME_SLOTS)(max([0, sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
     endif
 );
 
@@ -383,16 +395,18 @@ constraint(
     endif
 );
 
-var float: obj1_2 = sum(i in 2..2, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandGap[i, l, t])/(sum(i in SERVICE_INSTANCES, l in LOCATIONS)(serviceDemands[i, l])*NUM_TIME_SLOTS)*200000;
-var float: obj2_2 = sum(i in 2..2, l in LOCATIONS, t in ACTION_TIME_SLOTS)(demandAllocationCost[i, l, t])/(NUM_LOCATION*NUM_SERVICE_INSTANCES*MAX_DISTANCE*NUM_TIME_SLOTS)*100;
+var float: obj1_2 = sum(i in 2..2, t in ACTION_TIME_SLOTS)(obj1_parts[i, t]);
+var float: obj2_2 = sum(i in 2..2, t in ACTION_TIME_SLOTS)(obj2_parts[i, t]);
 % var float: obj3_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t] - functionPlacementReduction[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100;
 % var float: obj3_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)((functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100;
 var float: obj3_2;
 constraint(
     if JOINT_SCHEDULING > 0 then
-        obj3_2 = max([obj1_2 + obj2_2, sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        %obj3_2 = sum(i in 2..2, t in ACTION_TIME_SLOTS)(max([obj1_parts[i, t] + obj2_parts[i, t], sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
+        obj3_2 = sum(i in 2..2, t in ACTION_TIME_SLOTS)(max([0, sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
     else
-        obj3_2 = max([obj1_2 + obj2_2, sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        %obj3_2 = sum(i in 2..2, t in ACTION_TIME_SLOTS)(max([obj1_parts[i, t] + obj2_parts[i, t], sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
+        obj3_2 = sum(i in 2..2, t in ACTION_TIME_SLOTS)(max([0, sum(l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, t])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100]))
     endif
 );
 % var float: obj3_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, SCALE_OUT, t])/(NUM_LOCATION*max(FUNCTION_TYPE)*NUM_TIME_SLOTS*100);
@@ -412,9 +426,11 @@ var float: lastObj2 = sum(i in SERVICE_INSTANCES, l in LOCATIONS)(demandAllocati
 var float: lastObj3;
 constraint(
     if JOINT_SCHEDULING > 0 then
-        lastObj3 = max([lastObj1 + lastObj2, sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        %lastObj3 = max([lastObj1 + lastObj2, sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        lastObj3 = max([0, sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
     else
-        lastObj3 = max([lastObj1 + lastObj2, sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        %lastObj3 = max([lastObj1 + lastObj2, sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
+        lastObj3 = max([0, sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(abs(functionPlacement[i, l, f, NUM_TIME_SLOTS])*maxFunctionRequirements[f, CPU])/(sum(l in LOCATIONS)(locationCapacity[l, CPU])*NUM_TIME_SLOTS)/100])
     endif
 );
 
