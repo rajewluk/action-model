@@ -175,7 +175,8 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
 
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
                                    total_action_counter, action_slots_number, action_demand_level,
-                                   change_action_demands, action_trend_threshold, action_change_percent):
+                                   change_action_demands, action_trend_threshold, action_change_percent,
+                                   prev_action_information):
     action_demand = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
                               [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]]
     initial_action_counter = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
@@ -183,7 +184,8 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
     result = {
         "actionDemands": action_demand,
-        "initialActionCounter": initial_action_counter
+        "initialActionCounter": initial_action_counter,
+        "refActionDemands": action_demand.copy()
     }
 
     max_break_counter = 100
@@ -212,6 +214,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                         counter = 0
 
         print("Action Demands: [[{},{}], [{},{}]]".format(new_demand[0][0], new_demand[0][1], new_demand[1][0], new_demand[1][1]))
+        result["refActionDemands"] = action_demand.copy()
 
     else:
         print("Action Schedule")
@@ -249,8 +252,11 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                     # required_demand = math.ceil(total_placement * required_demand)  for % change
                     required_demand = math.ceil(required_demand)
                 if iteration > 1:
-                    diff = required_demand - math.floor(total_action_counter[s][f] / action_slots_number)
+                    prev_required_demand = prev_action_information["refActionDemands"][s][f]
+                    diff = prev_required_demand - math.floor(total_action_counter[s][f] / action_slots_number)
                     required_demand += diff
+                    if diff > 0:
+                        print("ACT Differ[{},{}]) = {}".format(s, f, diff))
                 print("ACT Demand[{},{}]) = {}".format(s, f, required_demand))
                 counter = 0
                 a = 1
@@ -268,6 +274,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                         new_demand[s][f] += 1
                         counter = 0
 
+        result["refActionDemands"] = new_demand.copy()
         print("[{}] Action Demands: [[{},{}], [{},{}]]".format(iteration, new_demand[0][0] * action_slots_number,
                                                                new_demand[0][1] * action_slots_number,
                                                                new_demand[1][0] * action_slots_number,
@@ -275,6 +282,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
     test = False
     if test and iteration == 1:
+        next_demand = result
         for i in range(10):
             next_demand = get_initial_action_information(2 + i, joint_actions_allocation, initial_function_placement,
                                                          [[new_demand[0][0] * action_slots_number,
@@ -282,7 +290,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                                           [new_demand[1][0] * action_slots_number,
                                                            new_demand[1][1] * action_slots_number]], action_slots_number,
                                                          action_demand_level, change_action_demands,
-                                                         action_trend_threshold, action_change_percent)
+                                                         action_trend_threshold, action_change_percent, next_demand)
         exit(0)
 
     return result
@@ -549,11 +557,14 @@ async def run_allocation(config, sim_seq_number, res_file):
                                                                   function_requirements, initial_demand_allocation)
         orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
         orchestration_allocation["serviceDemands"] = service_demands
+        prev_action_allocation = None
+        if iterations > 1:
+            prev_action_allocation = action_demand_history[-1]
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounter,
                                                            action_time_slots, action_demand_level,
                                                            change_action_demands, action_trend_threshold,
-                                                           action_change_percent)
+                                                           action_change_percent, prev_action_allocation)
         action_demand_history.append(action_allocation)
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
                                                                    action_demand_history, allocate_actions)
