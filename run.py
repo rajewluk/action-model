@@ -253,12 +253,16 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                     required_demand += diff
                 print("ACT Demand[{},{}]) = {}".format(s, f, required_demand))
                 counter = 0
+                a = 1
+                location_index_map = list()
+                for l in range(5):
+                    for k in range(initial_function_placement[s][l][f]):
+                        location_index_map.append(l)
                 while new_demand[s][f] < required_demand:
                     counter += 1
                     if counter > max_break_counter:
                         raise Exception("Cannot allocate requested action demand {}".format(required_demand))
-                    l = random.randint(0, 4)
-                    a = 1
+                    l = random.choice(location_index_map)
                     if initial_action_counter[s][l][f][a] < initial_function_placement[s][l][f]:
                         initial_action_counter[s][l][f][a] += 1
                         new_demand[s][f] += 1
