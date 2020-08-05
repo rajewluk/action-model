@@ -329,11 +329,11 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t 
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS) (
-    sum(l2 in LOCATIONS)(demandAllocationsReduction[i, l2, l, t]) == max([0, sum(l2 in LOCATIONS)(demandAllocations[i, l2, l, t]) - (functionPlacement[i, l, vDNS_1, t] - functionPlacementReduction[i, l, vDNS_1, t])*maxFunctionRequirements[vDNS_1, THR]])
+    sum(l2 in LOCATIONS)(demandAllocationsReduction[i, l2, l, t]) == max([0, sum(l2 in LOCATIONS)(demandAllocations[i, l2, l, t]) - (functionPlacement[i, l, vDNS_1, t] - functionPlacementReduction[i, l, vDNS_1, t] + functionReservationForActions[i, l, vDNS_1])*maxFunctionRequirements[vDNS_1, THR]])
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS) (
-    balancerDemandAllocationsReduction[i, l, t] = max([0, balancerDemandAllocations[i, l, t] - (functionPlacement[i, l, vLB_1, t] - functionPlacementReduction[i, l, vLB_1, t])*maxFunctionRequirements[vLB_1, THR], ])
+    balancerDemandAllocationsReduction[i, l, t] = max([0, balancerDemandAllocations[i, l, t] - (functionPlacement[i, l, vLB_1, t] - functionPlacementReduction[i, l, vLB_1, t] + functionReservationForActions[i, l, vLB_1])*maxFunctionRequirements[vLB_1, THR], ])
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, l2 in LOCATIONS, t in ACTION_TIME_SLOTS) (
