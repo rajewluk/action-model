@@ -732,6 +732,7 @@ def run_simulation(plan_file):
         Path.mkdir(res_folder_name)
 
     sys.stdout = Logger("{}/output.log".format(res_folder_name))
+    simulation_start_time = time.time()
     print("START: {}".format(datetime.datetime.now()))
 
     copyfile(plan_file, '{}/plan.cfg'.format(res_folder_name))
@@ -763,7 +764,10 @@ def run_simulation(plan_file):
     with open(plan_file, 'w') as configfile:
         plan_config.write(configfile)
 
+    simulation_stop_time = time.time()
     print("STOP: {}".format(datetime.datetime.now()))
+    time_diff = simulation_stop_time - simulation_start_time
+    print("TIME: {:.0f} seconds, {:.0f} minutes".format(math.ceil(time_diff), math.ceil(time_diff/60.0)))
 
 
 def main():
