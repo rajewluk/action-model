@@ -219,7 +219,6 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
     else:
         print("Action Schedule")
         new_demand = [[0, 0], [0, 0]]
-        random.seed(iteration)
 
         threshold_indicator = iteration % action_trend_threshold
         if threshold_indicator == 0:
@@ -231,6 +230,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
         for s in range(2):
             for f in range(2):
+                random.seed(iteration)
                 total_placement = 0
                 for l in range(5):
                     total_placement += initial_function_placement[s][l][f]
@@ -264,6 +264,10 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                 for l in range(5):
                     for k in range(initial_function_placement[s][l][f]):
                         location_index_map.append(l)
+                if change_action_demands:
+                    random.seed(iteration)
+                else:
+                    random.seed(1000)
                 while new_demand[s][f] < required_demand:
                     counter += 1
                     if counter > max_break_counter:
