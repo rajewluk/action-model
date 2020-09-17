@@ -174,7 +174,7 @@ constraint forall(i in SERVICE_INSTANCES, l1 in LOCATIONS, t in ACTION_TIME_SLOT
     if JOINT_SCHEDULING then
         slaSatisfaction[i, l1, t] = sum(l2 in LOCATIONS)(demandAllocations[i, l1, l2, t]*(1-locationDistance[l1, l2]/MAX_DISTANCE)/serviceDemands[i, l1]) * MAX_SLA
     else
-        slaSatisfaction[i, l1, t] = sum(l2 in LOCATIONS)((demandAllocations[i, l1, l2, t] - demandAllocationsReduction[i, l1, l2, t])*(1-locationDistance[l1, l2]/MAX_DISTANCE)/serviceDemands[i, l1]) * MAX_SLA
+        slaSatisfaction[i, l1, t] = max([0.0, sum(l2 in LOCATIONS)((demandAllocations[i, l1, l2, t] - demandAllocationsReduction[i, l1, l2, t])*(1-locationDistance[l1, l2]/MAX_DISTANCE)/serviceDemands[i, l1]) * MAX_SLA])
     endif
 );
 
