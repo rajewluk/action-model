@@ -75,10 +75,10 @@ def load_config(config_name, main_config):
             new_config['Simulation']['append-results'] = 'yes'
             new_config['Simulation']['completed'] = 'no'
             new_config['Plot'] = {}
-            new_config['Plot']['y-column'] = "S1_AVG_SLA"
+            new_config['Plot']['y-columns'] = "['S1_AVG_SLA']"
             new_config['Plot']['title'] = "Average SLA"
             new_config['Plot']['x-title'] = "Iteration"
-            new_config['Plot']['series-label'] = "level {}"
+            new_config['Plot']['series-labels'] = "level {}"
 
             new_config['Slots'] = {}
             new_config['TrafficDemands'] = {}
