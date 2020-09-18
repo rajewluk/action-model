@@ -13,10 +13,6 @@ import csv
 import numpy as np
 import sys
 import datetime
-import plotly
-import plotly.graph_objects as go
-import plotly.express as px
-import pandas as pd
 
 
 class Logger(object):
@@ -67,6 +63,7 @@ def load_config(config_name, main_config):
             new_config['Allocation']['allocate-actions'] = 'yes'
             new_config['Allocation']['action-feedback-delay'] = '0'
             new_config['Allocation']['initial-demand-level'] = '80'
+            new_config['Allocation']['seed-base'] = '0'
             new_config['Statistics'] = {}
             new_config['Statistics']['max-sla'] = '10000'
         else:
@@ -150,7 +147,6 @@ def round_sig(number, sig):
                 correction += 1
             value = 0
             while sig_number < sig and value != number:
-                prev_value = value
                 counter += 1
                 value = round(number, counter)
                 str_val = non_exp_repr(value)
@@ -176,9 +172,9 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
                                    total_action_counter, action_slots_number, action_demand_level,
                                    change_action_demands, action_trend_threshold, action_change_percent,
-                                   prev_action_information):
+                                   prev_action_information, seed_base):
     action_demand = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
-                              [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]]
+                     [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]]
     initial_action_counter = [[[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]],
                               [[[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]]
 
@@ -193,7 +189,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
     if joint_actions_allocation:
         print("Action Demands")
         new_demand = [[0, 0], [0, 0]]
-        random.seed(iteration)
+        random.seed(seed_base + iteration)
         for s in range(2):
             for f in range(2):
                 required_demand = action_demand_level * (f + 1) * action_slots_number  # twice the amount for DNS
@@ -230,7 +226,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
         for s in range(2):
             for f in range(2):
-                random.seed(iteration)
+                random.seed(seed_base + iteration)
                 total_placement = 0
                 for l in range(5):
                     total_placement += initial_function_placement[s][l][f]
@@ -265,9 +261,9 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                     for k in range(initial_function_placement[s][l][f]):
                         location_index_map.append(l)
                 if change_action_demands:
-                    random.seed(iteration)
+                    random.seed(seed_base + iteration)
                 else:
-                    random.seed(1000)
+                    random.seed(seed_base + 1000)
                 while new_demand[s][f] < required_demand:
                     counter += 1
                     if counter > max_break_counter:
@@ -294,18 +290,19 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                                           [new_demand[1][0] * action_slots_number,
                                                            new_demand[1][1] * action_slots_number]], action_slots_number,
                                                          action_demand_level, change_action_demands,
-                                                         action_trend_threshold, action_change_percent, next_demand)
+                                                         action_trend_threshold, action_change_percent, next_demand,
+                                                         seed_base)
         exit(0)
 
     return result
 
 
 def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand_level, change_traffic_demands,
-                                   traffic_trend_threshold, traffic_change_percent):
+                                   traffic_trend_threshold, traffic_change_percent, seed_base):
     # traffic_demands = [[40, 15, 20, 5, 25], [15, 20, 30, 15, 20]]
     # return traffic_demands
     traffic_demands = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]
-    random.seed(1)
+    random.seed(seed_base + 1)
 
     min_demand = traffic_min_demand
     for s in range(2):
@@ -330,7 +327,7 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
             direction_indicator = -1
 
         # print("{}: {}/{}/{}".format(iteration, threshold_indicator, step_indicator, direction_indicator))
-        random.seed(iteration)
+        random.seed(seed_base + iteration)
         for s in range(2):
             for l in range(5):
                 step = math.ceil(traffic_demands[s][l] * traffic_change_percent / 100.0)
@@ -349,9 +346,9 @@ def gen_traffic_demand_information(iteration, traffic_min_demand, traffic_demand
     test = False
     if test and iteration == 1:
         for i in range(10):
-            next_demand = gen_traffic_demand_information(2 + i, traffic_min_demand, traffic_demand_level,
-                                                         change_traffic_demands, traffic_trend_threshold,
-                                                         traffic_change_percent)
+            gen_traffic_demand_information(2 + i, traffic_min_demand, traffic_demand_level,
+                                           change_traffic_demands, traffic_trend_threshold,
+                                           traffic_change_percent, seed_base)
         exit(0)
     return traffic_demands
 
@@ -387,7 +384,7 @@ def gen_initial_demand_allocation(service_demands, initial_function_placement, f
     # initial_demand_allocation = [[[16, 0, 0, 0, 0], [0, 15, 0, 0, 0], [0, 1, 16, 2, 0], [0, 0, 0, 5, 0],[0, 0, 0, 4, 16]],
     #                             [[15, 0, 0, 0, 0], [1, 16, 0, 0, 0], [0, 0, 16, 0, 0], [0, 0, 0, 15, 0], [0, 0, 0, 1, 16]]]
     initial_demand_allocation = [[[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
-                                [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]]
+                                 [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]]]
 
     if reference_demand_allocation is None:
         for s in range(len(service_demands)):
@@ -447,7 +444,7 @@ def gen_result_file_name(config, sim_seq_number):
                                                       action_demand_level, change_action_demands, sim_seq_number).lower()
 
 
-async def run_allocation(config, sim_seq_number, res_file):
+async def run_allocation(config, res_file):
     slot_multiplier = config.getint("Slots", "multiplier")
     max_iterations = config.getint("Slots", "iterations")
     max_remaining_slots = config.getint("Slots", "max-remaining")
@@ -466,6 +463,7 @@ async def run_allocation(config, sim_seq_number, res_file):
     initial_demand_level = config.getint("Allocation", "initial-demand-level")
     allocate_actions = config.getboolean("Allocation", "allocate-actions")
     action_feedback_delay = config.getint("Allocation", "action-feedback-delay")
+    seed_base = config.getint("Allocation", "seed-base")
     max_sla = config.getfloat("Statistics", "max-sla")
     # Transform Model into a instance
     coin_bc = minizinc.Solver.lookup("coin-bc")
@@ -493,7 +491,7 @@ async def run_allocation(config, sim_seq_number, res_file):
                              [2, 4, 2]]  # vDNS_1
     service_demands = gen_traffic_demand_information(1, traffic_min_demand, traffic_demand_level,
                                                      change_traffic_demands, traffic_trend_threshold,
-                                                     traffic_change_percent)
+                                                     traffic_change_percent, seed_base)
     initial_function_placement = gen_initial_function_placement(initial_demand_level, function_requirements)
     initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
                                                               function_requirements)
@@ -535,7 +533,7 @@ async def run_allocation(config, sim_seq_number, res_file):
     final_objective = roundPlacementSolution + 1
     total_start_time = time.time()
     res_writer = csv.writer(res_file, dialect="excel", delimiter=";")
-    while iterations < max_iterations:  #  and final_objective > roundPlacementSolution:
+    while iterations < max_iterations:  # and final_objective > roundPlacementSolution:
         start_time = time.time()
         iterations += 1
         print("{} Calculation for {} time slots".format(iterations, action_time_slots))
@@ -556,7 +554,7 @@ async def run_allocation(config, sim_seq_number, res_file):
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
         service_demands = gen_traffic_demand_information(iterations, traffic_min_demand, traffic_demand_level,
                                                          change_traffic_demands, traffic_trend_threshold,
-                                                         traffic_change_percent)
+                                                         traffic_change_percent, seed_base)
         initial_demand_allocation = gen_initial_demand_allocation(service_demands, initial_function_placement,
                                                                   function_requirements, initial_demand_allocation)
         orchestration_allocation["initialDemandAllocation"] = initial_demand_allocation
@@ -568,7 +566,7 @@ async def run_allocation(config, sim_seq_number, res_file):
                                                            initial_function_placement, lastActionCounter,
                                                            action_time_slots, action_demand_level,
                                                            change_action_demands, action_trend_threshold,
-                                                           action_change_percent, prev_action_allocation)
+                                                           action_change_percent, prev_action_allocation, seed_base)
         action_demand_history.append(action_allocation)
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
                                                                    action_demand_history, allocate_actions)
@@ -669,14 +667,14 @@ def run_simulation(plan_file):
     if completed:
         print("Simulation was already completed")
         return
-    #df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
+    # df = pd.read_csv('https://raw.githubusercontent.com/plotly/datasets/master/finance-charts-apple.csv')
 
-    #pd.options.plotting.backend = "plotly"
+    # pd.options.plotting.backend = "plotly"
 
     # Plot
-    #fig = df.plot(x='Date', y=['AAPL.High', 'AAPL.Low'])
+    # fig = df.plot(x='Date', y=['AAPL.High', 'AAPL.Low'])
 
-    #fig.show()
+    # fig.show()
 
     values = {}
     options_size = 0
@@ -700,14 +698,14 @@ def run_simulation(plan_file):
                     value = main_config.getboolean(section, key)
                 else:
                     raise ValueError()
-            except ValueError as e:
+            except ValueError:
                 try:
                     value = main_config.getint(section, key)
 
-                except ValueError as e:
+                except ValueError:
                     try:
                         value = main_config.getfloat(section, key)
-                    except ValueError as e:
+                    except ValueError:
                         value = main_config.get(section, key)
             if section not in values:
                 values[section] = {}
@@ -744,7 +742,7 @@ def run_simulation(plan_file):
         res_file_name = "{}/{}".format(res_folder_name, gen_result_file_name(main_config, 1))
         with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
             set_res_file_header(res_file)
-            asyncio.run(run_allocation(main_config, 1, res_file))
+            asyncio.run(run_allocation(main_config, res_file))
     else:
         print("Simulation Values: {}".format(values))
         for i in range(options_size):
@@ -758,7 +756,7 @@ def run_simulation(plan_file):
             print_config(main_config)
             with open(res_file_name, 'a' if app_res_file else 'w', newline='') as res_file:
                 set_res_file_header(res_file)
-                asyncio.run(run_allocation(main_config, i + 1, res_file))
+                asyncio.run(run_allocation(main_config, res_file))
 
     plan_config['Simulation']['completed'] = 'yes'
     with open(plan_file, 'w') as configfile:
