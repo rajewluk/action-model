@@ -56,11 +56,11 @@ def get_statistics(times_set):
             print("{:13} [{}]: {} {} {} {} {}".format(mode, len(times_set[mode]), calc_set.mean(), calc_set.var(),
                                                       calc_set.std(), calc_set.min(), calc_set.max()))
             res_writer.writerow([mode,
-                                 "{:.1f}".format(np.array(calc_set.mean()).replace(".", ",")),
-                                 "{:.1f}".format(np.array(calc_set.var()).replace(".", ",")),
-                                 "{:.1f}".format(np.array(calc_set.std()).replace(".", ",")),
-                                 "{:.1f}".format(np.array(calc_set.min()).replace(".", ",")),
-                                 "{:.1f}".format(np.array(calc_set.max()).replace(".", ","))])
+                                 "{:.1f}".format(np.array(calc_set.mean())).replace(".", ","),
+                                 "{:.1f}".format(np.array(calc_set.var())).replace(".", ","),
+                                 "{:.1f}".format(np.array(calc_set.std())).replace(".", ","),
+                                 "{:.1f}".format(np.array(calc_set.min())).replace(".", ","),
+                                 "{:.1f}".format(np.array(calc_set.max())).replace(".", ",")])
 
 
 files = get_output_files("time_simulations")
