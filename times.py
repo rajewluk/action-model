@@ -37,9 +37,12 @@ def parse_times(lines):
         for time_result in lines[mode]:
             if mode not in times:
                 times[mode] = []
-
-            time_res = time_result.split(",")[1].replace(" minutes", "")
-            times[mode].append(int(time_res))
+            # print("{} {}".format(mode, time_result))
+            try:
+                time_res = time_result.split(",")[1].replace(" minutes", "")
+                times[mode].append(int(time_res))
+            except:
+                print("{}: Incomplete".format(mode))
     return times
 
 
@@ -49,7 +52,7 @@ def get_statistics(times_set):
         res_writer.writerow(['Mode', 'Result'])
         res_file.flush()
         for mode in times_set:
-            print("{}: {}".format(mode, np.array(times_set[mode]).mean()))
+            print("{:13} [{}]: {}".format(mode, len(times_set[mode]), np.array(times_set[mode]).mean()))
             res_writer.writerow([mode, "{:.1f}".format(np.array(times_set[mode]).mean()).replace(".", ",")])
 
 
