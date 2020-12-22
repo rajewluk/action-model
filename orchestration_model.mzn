@@ -445,14 +445,14 @@ constraint(
 );
 
 constraint(
-    allocationObjective = obj1_1 + obj2_1 + obj4_1 + obj1_2 + obj2_2 + obj4_2
+    allocationObjective = 1 + obj1_1 + obj2_1 + obj4_1 + obj1_2 + obj2_2 + obj4_2
 );
 
 constraint(
     if MINIMIZE_ALLOCATION then
-        totalObjective = allocationObjective + obj3_1 + obj3_2
+        totalObjective = 100*(allocationObjective + obj3_1 + obj3_2)
     else
-        totalObjective = allocationObjective
+        totalObjective = 100*allocationObjective
     endif
 );
 
