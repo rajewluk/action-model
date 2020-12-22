@@ -49,11 +49,18 @@ def parse_times(lines):
 def get_statistics(times_set):
     with open("times.csv", 'w', newline='') as res_file:
         res_writer = csv.writer(res_file, delimiter=";")
-        res_writer.writerow(['Mode', 'Result'])
+        res_writer.writerow(['Mode', 'Result', 'Var', 'Std', 'Min', 'Max'])
         res_file.flush()
         for mode in times_set:
-            print("{:13} [{}]: {}".format(mode, len(times_set[mode]), np.array(times_set[mode]).mean()))
-            res_writer.writerow([mode, "{:.1f}".format(np.array(times_set[mode]).mean()).replace(".", ",")])
+            calc_set = np.array(times_set[mode])
+            print("{:13} [{}]: {} {} {} {} {}".format(mode, len(times_set[mode]), calc_set.mean(), calc_set.var(),
+                                                      calc_set.std(), calc_set.min(), calc_set.max()))
+            res_writer.writerow([mode,
+                                 "{:.1f}".format(np.array(calc_set.mean()).replace(".", ",")),
+                                 "{:.1f}".format(np.array(calc_set.var()).replace(".", ",")),
+                                 "{:.1f}".format(np.array(calc_set.std()).replace(".", ",")),
+                                 "{:.1f}".format(np.array(calc_set.min()).replace(".", ",")),
+                                 "{:.1f}".format(np.array(calc_set.max()).replace(".", ","))])
 
 
 files = get_output_files("time_simulations")
