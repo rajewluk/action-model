@@ -285,10 +285,10 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
         next_demand = result
         for i in range(10):
             next_demand = get_initial_action_information(2 + i, joint_actions_allocation, initial_function_placement,
-                                                         [[new_demand[0][0] * action_slots_number,
-                                                           new_demand[0][1] * action_slots_number],
-                                                          [new_demand[1][0] * action_slots_number,
-                                                           new_demand[1][1] * action_slots_number]], action_slots_number,
+                                                         [[next_demand["refActionDemands"][0][0] * action_slots_number,
+                                                           next_demand["refActionDemands"][0][1] * action_slots_number],
+                                                          [next_demand["refActionDemands"][1][0] * action_slots_number,
+                                                           next_demand["refActionDemands"][1][1] * action_slots_number]], action_slots_number,
                                                          action_demand_level, change_action_demands,
                                                          action_trend_threshold, action_change_percent, next_demand,
                                                          seed_base)
@@ -724,7 +724,7 @@ def run_simulation(plan_file):
         Path.mkdir(Path("results"))
 
     if Path.exists(res_folder_name) and Path.is_dir(res_folder_name):
-        rmtree(res_folder_name)
+        rmtree(path=res_folder_name, ignore_errors=True)
 
     if not Path.exists(res_folder_name) or not Path.is_dir(res_folder_name):
         Path.mkdir(res_folder_name)
