@@ -64,6 +64,7 @@ def load_config(config_name, main_config):
             new_config['Allocation']['action-feedback-delay'] = '0'
             new_config['Allocation']['initial-demand-level'] = '80'
             new_config['Allocation']['seed-base'] = '0'
+            new_config['Allocation']['joint-actions-allocation'] = 'no'
             new_config['Statistics'] = {}
             new_config['Statistics']['max-sla'] = '10000'
         else:
@@ -167,6 +168,27 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
                     action_feedback[s][l][f] = reference_data[s][l][f][0] + reference_data[s][l][f][1]
 
     return action_feedback
+
+
+def get_action_arrival_times(iterations, action_slots_number, lambdas, seed_base):
+    random.seed(seed_base + 1000)
+    action_arrival_times = [[[[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]]],
+                     [[[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]]]]
+    for s in range(2):
+        for f in range(2):
+            for l in range(5):
+                for a in range(2):
+                    action_arrival_times[s][l][f][a] = list()
+                    last_arrival_time = 0
+                    while True:
+                        time_offset = -math.log(1 - random.random()) / lambdas[f][a]
+                        last_arrival_time = math.ceil(last_arrival_time + time_offset)
+                        if math.ceil(last_arrival_time / action_slots_number) <= iterations:
+                            action_arrival_times[s][l][f][a].append(
+                                [math.ceil(last_arrival_time / action_slots_number), last_arrival_time])
+                        else:
+                            break
+    return action_arrival_times
 
 
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
@@ -455,7 +477,7 @@ async def run_allocation(config, res_file):
     action_demand_level = config.getint("ActionDemands", "level")
     action_trend_threshold = config.getint("ActionDemands", "trend-threshold")
     action_change_percent = config.getint("ActionDemands", "change-percent")
-    joint_actions_allocation = False
+    joint_actions_allocation = config.getboolean("Allocation", "joint-actions-allocation")
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
     optimize_resources = config.getboolean("Allocation", "optimize-resources")
@@ -769,6 +791,7 @@ def run_simulation(plan_file):
 
 
 def main():
+    # get_action_arrival_times(10, 6, [[0.5, 0.4], [0.5, 0.4]], 45)
     plan_file = "plan.cfg"
     if len(sys.argv) > 1:
         plan_file = str(sys.argv[1])
