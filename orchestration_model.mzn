@@ -25,7 +25,8 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100
 % actions demands
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100: actionDemands;
 
-int: MAX_FN_PLACEMENT = max([functionPlacementTarget[i, l, f] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE]);
+% for each function we cannot have more than initial amount + number of action time slots
+int: MAX_FN_PLACEMENT = max([initialFunctionPlacement[i, l, f] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE]) + NUM_TIME_SLOTS - 1;
 
 int: TOTAL_ACTION_DEMAND = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemands[i, l, f, a]);
 
@@ -37,10 +38,10 @@ int: TOTAL_ACTION_DEMAND = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNC
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..max([locationCapacity[l, THR] | l in LOCATIONS]): serviceCapacity;
 
 % placement of functions to satisfy demands within location limits for each time slot
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..(MAX_FN_PLACEMENT*2): functionPlacement;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..MAX_FN_PLACEMENT: functionPlacement;
 
 %placement of scheduled actions
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..(MAX_FN_PLACEMENT*2): actionPlacement;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..MAX_FN_PLACEMENT: actionPlacement;
 
 % how many functions must be reduced for the execution actions on them
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..MAX_FN_PLACEMENT: functionPlacementReduction;
@@ -52,10 +53,10 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: func
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: conflictingActionCounter;
 
 % placement of functions to satisfy demands within location limits for each time slot
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..(MAX_FN_PLACEMENT*2): actionCounter;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..MAX_FN_PLACEMENT: actionCounter;
 
 % allocation of actions to satisfy action demands
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of var 0..min([(MAX_FN_PLACEMENT*2), max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE])]): actionCounterAllocation;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of var 0..min([MAX_FN_PLACEMENT, max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE])]): actionCounterAllocation;
 
 %how much of the action demand is not satisfied - we should minimize it
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var 0..max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE]): actionDemandGap;
@@ -389,7 +390,7 @@ constraint(
 var float: obj4_1;
 constraint(
     if TOTAL_ACTION_DEMAND > 0 then
-        obj4_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*1000
+        obj4_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100
     else
         obj4_1 = 0
     endif
@@ -413,7 +414,7 @@ constraint(
 var float: obj4_2;
 constraint(
     if TOTAL_ACTION_DEMAND > 0 then
-        obj4_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*1000
+        obj4_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100
     else
         obj4_2 = 0
     endif
