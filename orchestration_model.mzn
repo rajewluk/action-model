@@ -450,9 +450,9 @@ constraint(
 
 constraint(
     if MINIMIZE_ALLOCATION then
-        totalObjective = 100*(allocationObjective + obj3_1 + obj3_2)
+        totalObjective = 10000*(allocationObjective + obj3_1 + obj3_2)
     else
-        totalObjective = 100*allocationObjective
+        totalObjective = 10000*allocationObjective
     endif
 );
 

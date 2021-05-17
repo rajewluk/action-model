@@ -2,6 +2,7 @@ from pathlib import Path
 from os import walk
 import numpy as np
 import csv
+import math
 
 
 def get_output_files(root_folder):
@@ -52,7 +53,11 @@ def get_statistics(times_set):
         res_writer.writerow(['Mode', 'Result', 'Var', 'Std', 'Min', 'Max'])
         res_file.flush()
         for mode in times_set:
-            calc_set = np.array(times_set[mode])
+            calc_set = np.sort(np.array(times_set[mode]))
+            reduction = math.floor(calc_set.size/20.0) + 1
+            for r in range(reduction):
+                calc_set = np.delete(calc_set, 0)
+                calc_set = np.delete(calc_set, calc_set.size - 1)
             print("{:13} [{}]: {} {} {} {} {}".format(mode, len(times_set[mode]), calc_set.mean(), calc_set.var(),
                                                       calc_set.std(), calc_set.min(), calc_set.max()))
             res_writer.writerow([mode,
@@ -63,7 +68,7 @@ def get_statistics(times_set):
                                  "{:.1f}".format(np.array(calc_set.max())).replace(".", ",")])
 
 
-files = get_output_files("time_simulations")
+files = get_output_files("time_simulations_100")
 # files = get_output_files("results/times")
 time_lines = get_time_lines(files)
 times_results = parse_times(time_lines)
