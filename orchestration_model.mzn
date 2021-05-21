@@ -94,7 +94,7 @@ array[SERVICE_INSTANCES] of var 0.0..1.0: avgSlaSatisfaction;
 %how many instances we have consumed over all the time slots
 array[SERVICE_INSTANCES, FUNCTION_TYPE] of var int: totalFunctionPlacement;
 
-array[SERVICE_INSTANCES, FUNCTION_TYPE] of var int: totalActionCounter;
+array[SERVICE_INSTANCES, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var int: totalActionCounter;
 
 %%%%%%%%%%%%%%%%%%
 %   CONSTRAINTS
@@ -351,8 +351,8 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE) (
     remainingSlots[i, l, f] = min(MAX_REMAINING_SLOTS, NUM_TIME_SLOTS - max(t in ACTION_TIME_SLOTS where conflictingActionCounter[i, l, f, t] > 0)(t))
 );
 
-constraint forall(i in SERVICE_INSTANCES, f in FUNCTION_TYPE)(
-    totalActionCounter[i, f] = sum(l in LOCATIONS, a in CUSTOM_ACTION_TYPE, t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, a + CUSTOM_ACTION_OFFSET, t])
+constraint forall(i in SERVICE_INSTANCES, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(
+    totalActionCounter[i, f, a] = sum(l in LOCATIONS, t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, a + CUSTOM_ACTION_OFFSET, t])
 );
 
 %%%%%%%%%%%%%%%%%%
@@ -516,7 +516,8 @@ output ["TOTAL ACT DEMAND: \(TOTAL_ACTION_DEMAND)\n"] ++ ["Objective: \(allocati
        ["\nIteration Statistics"] ++
        ["\nAVG SLA: [" ++ show_float(4, 3, avgSlaSatisfaction[1]) ++ ", " ++ show_float(4, 3, avgSlaSatisfaction[2]) ++ "]"] ++
        ["\nFNP: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalFunctionPlacement[1, f])), \(sum(f in FUNCTION_TYPE)(totalFunctionPlacement[2, f]))]"] ++
-       ["\nACT: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalActionCounter[1, f])), \(sum(f in FUNCTION_TYPE)(totalActionCounter[2, f]))]"] ++
+       ["\nACT 1: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalActionCounter[1, f, 1])), \(sum(f in FUNCTION_TYPE)(totalActionCounter[2, f, 1]))]"] ++
+       ["\nACT 2: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalActionCounter[1, f, 2])), \(sum(f in FUNCTION_TYPE)(totalActionCounter[2, f, 2]))]"] ++
        ["\nTHR: \(sum(l in LOCATIONS)(throughputInLocations[l, NUM_TIME_SLOTS]))/\(sum(l in LOCATIONS)(locationCapacity[l, THR]))"] ++
        ["\nCPU: \(sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(functionPlacement[i, l, f, NUM_TIME_SLOTS]*maxFunctionRequirements[f, CPU]))/\(sum(l in LOCATIONS)(locationCapacity[l, CPU]))"] ++
        ["\nRAM: \(sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(functionPlacement[i, l, f, NUM_TIME_SLOTS]*maxFunctionRequirements[f, RAM]))/\(sum(l in LOCATIONS)(locationCapacity[l, RAM]))"];

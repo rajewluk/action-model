@@ -22,11 +22,11 @@ locationDistance = [|
 
 %CPU [cores], RAM [GB], THR [Mb/s]
 locationCapacity = [|
-172, 512, 70 |
-172, 512, 70 |
-172, 512, 70 |
-172, 512, 70 |
-172, 512, 70 |];
+172, 512, 85 |
+172, 512, 85 |
+172, 512, 85 |
+172, 512, 85 |
+172, 512, 85 |];
 
 locationType = [OS, OS, OS, OS, OS];
 
