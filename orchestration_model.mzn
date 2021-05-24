@@ -96,6 +96,8 @@ array[SERVICE_INSTANCES, FUNCTION_TYPE] of var int: totalFunctionPlacement;
 
 array[SERVICE_INSTANCES, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var int: totalActionCounter;
 
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var int: totalActionCounterInLocations;
+
 %%%%%%%%%%%%%%%%%%
 %   CONSTRAINTS
 %%%%%%%%%%%%%%%%%%
@@ -353,6 +355,10 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE) (
 
 constraint forall(i in SERVICE_INSTANCES, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(
     totalActionCounter[i, f, a] = sum(l in LOCATIONS, t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, a + CUSTOM_ACTION_OFFSET, t])
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(
+    totalActionCounterInLocations[i, l, f, a] = sum(t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, a + CUSTOM_ACTION_OFFSET, t])
 );
 
 %%%%%%%%%%%%%%%%%%

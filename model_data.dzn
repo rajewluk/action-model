@@ -70,7 +70,7 @@ actionProperties = array2d(ACTION_TYPE, ACTION_PROPERTIES, [
 1, 1, 0, 0, % SCALE_OUT, action delay cost is already reflected in demand satisfaction
 1, 0, 1, 0, % SCALE_IN, action delay cost is already reflected in demand satisfaction
 0, 0, 0, 0, % TD, action delay cost is already reflected in demand satisfaction
-1, 0, 0, MAX_ACTION_PENALTY, % ACT_1
+0, 0, 1, MAX_ACTION_PENALTY, % ACT_1
 0, 0, 1, MAX_ACTION_PENALTY, % ACT_2
 ]);
 
