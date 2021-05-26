@@ -20,7 +20,7 @@ array[SERVICE_INSTANCES, LOCATIONS] of 0.0..MAX_DISTANCE: targetDemandAllocation
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of 0..100: functionReservationForActions;
 
 % initial allocation of actions
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100: initialActionCounter;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of 0..100: initialActionCounter;
 
 % actions demands
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100: actionDemands;
@@ -29,6 +29,8 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of 0..100
 int: MAX_FN_PLACEMENT = max([initialFunctionPlacement[i, l, f] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE]) + NUM_TIME_SLOTS - 1;
 
 int: TOTAL_ACTION_DEMAND = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemands[i, l, f, a]);
+
+int: TOTAL_INITIAL_ACTION = sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE, t in ACTION_TIME_SLOTS)(initialActionCounter[i, l, f, a, t]);
 
 %%%%%%%%%%%%%
 % Variables %
@@ -59,7 +61,7 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of v
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of var 0..min([MAX_FN_PLACEMENT, max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE])]): actionCounterAllocation;
 
 %how much of the action demand is not satisfied - we should minimize it
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var 0..max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE]): actionDemandGap;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE] of var 0..100: actionDemandGap;
 
 %amount of time slots we can move to the next iteration for execution of the action
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE] of var 0..NUM_TIME_SLOTS: remainingSlots;
@@ -253,12 +255,12 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
-    actionCounter[i, l, f, ACT_1, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET]))
+    actionCounter[i, l, f, ACT_1, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET, t]))
                                      + actionCounterAllocation[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET, t]
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
-    actionCounter[i, l, f, ACT_2, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET]))
+    actionCounter[i, l, f, ACT_2, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1 - actionCounter[i, l, f, ACT_1, t], initialActionCounter[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET, t]))
                                      + actionCounterAllocation[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET, t]
 );
 
@@ -277,7 +279,11 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a 
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE) (
-    actionDemandGap[i, l, f, a] = actionDemands[i, l, f, a] - sum(t in ACTION_TIME_SLOTS)(actionCounterAllocation[i, l, f, a, t])
+    if TOTAL_ACTION_DEMAND > 0 then
+        actionDemandGap[i, l, f, a] = actionDemands[i, l, f, a] - sum(t in ACTION_TIME_SLOTS)(actionCounterAllocation[i, l, f, a, t])
+    else
+        actionDemandGap[i, l, f, a] = sum(t in ACTION_TIME_SLOTS)(initialActionCounter[i, l, f, a, t] - actionCounter[i, l, f, a + CUSTOM_ACTION_OFFSET, t])
+    endif
 );
 
 %the limit of scaled instances at once
@@ -398,7 +404,7 @@ constraint(
     if TOTAL_ACTION_DEMAND > 0 then
         obj4_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100
     else
-        obj4_1 = 0
+        obj4_1 = 0 % sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_INITIAL_ACTION*100
     endif
 );
 
@@ -422,7 +428,7 @@ constraint(
     if TOTAL_ACTION_DEMAND > 0 then
         obj4_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100
     else
-        obj4_2 = 0
+        obj4_2 = 0 % sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_INITIAL_ACTION*100
     endif
 );
 
@@ -524,6 +530,8 @@ output ["TOTAL ACT DEMAND: \(TOTAL_ACTION_DEMAND)\n"] ++ ["Objective: \(allocati
        ["\nFNP: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalFunctionPlacement[1, f])), \(sum(f in FUNCTION_TYPE)(totalFunctionPlacement[2, f]))]"] ++
        ["\nACT 1: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalActionCounter[1, f, 1])), \(sum(f in FUNCTION_TYPE)(totalActionCounter[2, f, 1]))]"] ++
        ["\nACT 2: ["] ++ ["\(sum(f in FUNCTION_TYPE)(totalActionCounter[1, f, 2])), \(sum(f in FUNCTION_TYPE)(totalActionCounter[2, f, 2]))]"] ++
+       ["\nGAP 1: ["] ++ ["\(sum(f in FUNCTION_TYPE, l in LOCATIONS)(actionDemandGap[1, l, f, 1])), \(sum(f in FUNCTION_TYPE, l in LOCATIONS)(actionDemandGap[2, l, f, 1]))]"] ++
+       ["\nGAP 2: ["] ++ ["\(sum(f in FUNCTION_TYPE, l in LOCATIONS)(actionDemandGap[1, l, f, 2])), \(sum(f in FUNCTION_TYPE, l in LOCATIONS)(actionDemandGap[2, l, f, 2]))]"] ++
        ["\nTHR: \(sum(l in LOCATIONS)(throughputInLocations[l, NUM_TIME_SLOTS]))/\(sum(l in LOCATIONS)(locationCapacity[l, THR]))"] ++
        ["\nCPU: \(sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(functionPlacement[i, l, f, NUM_TIME_SLOTS]*maxFunctionRequirements[f, CPU]))/\(sum(l in LOCATIONS)(locationCapacity[l, CPU]))"] ++
        ["\nRAM: \(sum(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE)(functionPlacement[i, l, f, NUM_TIME_SLOTS]*maxFunctionRequirements[f, RAM]))/\(sum(l in LOCATIONS)(locationCapacity[l, RAM]))"];

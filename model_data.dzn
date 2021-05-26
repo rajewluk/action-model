@@ -57,8 +57,8 @@ serviceInstanceSLALevel = [ceil(MAX_SLA * 0.9), ceil(MAX_SLA * 0.999)]; % we can
 %|];
 
 actionDuration = array3d(LOCATION_TYPES, FUNCTION_TYPE, ACTION_TYPE,
-[2, 2, 1, 2, 1,   2, 2, 0, 2, 1, % OS [SCALE_OUT, SCALE_IN, TD, ACT_1, ACT_2]
- 1, 1, 1, 2, 1,   1, 1, 0, 2, 1 ]); % K8S
+[2, 2, 1, 1, 1,   2, 2, 0, 1, 1, % OS [SCALE_OUT, SCALE_IN, TD, ACT_1, ACT_2]
+ 1, 1, 1, 1, 1,   1, 1, 0, 1, 1 ]); % K8S
 
 % 1 means action may cause inconsistency of data, so locks whole VNF in location
 % last action can be executed along with others in terms of conflict
