@@ -10,7 +10,6 @@ NUM_SERVICE_INSTANCES = 2;
 %MAX_SLA = 10000.0; % 100%
 MAX_SCALED_INST_PER_FN = 1;
 %MAX_REMAINING_SLOTS = 2; % NUM_TIME_SLOTS - 1;
-MAX_ACTION_PENALTY = 100;
 
 locationDistance = [|
 0, 350, 400, 250, 450 |
@@ -22,11 +21,11 @@ locationDistance = [|
 
 %CPU [cores], RAM [GB], THR [Mb/s]
 locationCapacity = [|
-172, 512, 85 |
-172, 512, 85 |
-172, 512, 85 |
-172, 512, 85 |
-172, 512, 85 |];
+192, 512, 85 |
+192, 512, 85 |
+192, 512, 85 |
+192, 512, 85 |
+192, 512, 85 |];
 
 locationType = [OS, OS, OS, OS, OS];
 
@@ -66,13 +65,13 @@ actionDuration = array3d(LOCATION_TYPES, FUNCTION_TYPE, ACTION_TYPE,
 %to avoid that, we should scale enough resources before and we should migrate traffic out for time of action
 %{SCALE, TD, ACT_1, ACT_2};
 %{ACT_CONFLICT, ACT_RES_LOCK, ACT_FN_LOCK, ACT_DEADLINE};
-actionProperties = array2d(ACTION_TYPE, ACTION_PROPERTIES, [
-1, 1, 0, 0, % SCALE_OUT, action delay cost is already reflected in demand satisfaction
-1, 0, 1, 0, % SCALE_IN, action delay cost is already reflected in demand satisfaction
-0, 0, 0, 0, % TD, action delay cost is already reflected in demand satisfaction
-0, 0, 1, MAX_ACTION_PENALTY, % ACT_1
-0, 0, 1, MAX_ACTION_PENALTY, % ACT_2
-]);
+% actionProperties = array2d(ACTION_TYPE, ACTION_PROPERTIES, [
+% 1, 1, 0, 0, % SCALE_OUT, action delay cost is already reflected in demand satisfaction
+% 1, 0, 1, 0, % SCALE_IN, action delay cost is already reflected in demand satisfaction
+% 0, 0, 0, 0, % TD, action delay cost is already reflected in demand satisfaction
+% 1, 0, 1, 0, % ACT_1
+% 0, 0, 1, 0 % ACT_2
+% ]);
 
 %initialActionCounter = array4d(SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE,
 %[0, 1, 0, 1,   0, 0, 0, 0,  0, 6, 0, 12,   0, 0, 0, 0,   0, 0, 0, 0, % S1 -> [5 LOC] -> [f1,f2] -> [ACT1, ACT2]

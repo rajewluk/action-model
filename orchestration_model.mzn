@@ -55,7 +55,7 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: func
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: conflictingActionCounter;
 
 % placement of functions to satisfy demands within location limits for each time slot
-array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..MAX_FN_PLACEMENT: actionCounter;
+array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..100: actionCounter;
 
 % allocation of actions to satisfy action demands
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of var 0..min([MAX_FN_PLACEMENT, max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE])]): actionCounterAllocation;
@@ -497,6 +497,9 @@ output ["TOTAL ACT DEMAND: \(TOTAL_ACTION_DEMAND)\n"] ++ ["Objective: \(allocati
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "|" else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nAction Demand Allocation Gap for vLB\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionDemandGap[i, l, vLB_1, 1]),\(actionDemandGap[i, l, vLB_1, 2])]" ++ " " ++
+         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
+       ["\nAction Counter for vDNS\n\(LOCATIONS_ENUM)"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionCounter[i, l, vDNS_1, 4, t]),\(actionCounter[i, l, vDNS_1, 5, t])]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nAction Demand Allocation Gap for vDNS\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionDemandGap[i, l, vDNS_1, 1]),\(actionDemandGap[i, l, vDNS_1, 2])]" ++ " " ++

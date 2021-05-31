@@ -54,7 +54,11 @@ def load_config(config_name, main_config):
             new_config['TrafficDemands']['trend-threshold'] = '4'
             new_config['ActionDemands'] = {}
             new_config['ActionDemands']['fixed'] = 'yes'
-            new_config['ActionDemands']['level'] = '15'
+            new_config['ActionDemands']['act-1-level'] = '20'
+            new_config['ActionDemands']['act-2-level'] = '40'
+            new_config['ActionDemands']['act-1-lambda'] = '0.2'
+            new_config['ActionDemands']['act-2-lambda'] = '0.6'
+            new_config['ActionDemands']['log-batch-shape'] = 'no'
             new_config['ActionDemands']['change-percent'] = '10'
             new_config['ActionDemands']['trend-threshold'] = '4'
             new_config['Allocation'] = {}
@@ -156,7 +160,8 @@ def round_sig(number, sig):
         return value
 
 
-def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_history, allocate_actions, action_time_slots):
+def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_history, action_properties, allocate_actions,
+                           action_time_slots):
     action_feedback = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
                        [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
 
@@ -166,8 +171,10 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
             for l in range(5):
                 for f in range(2):
                     sum_of_actions = 0
-                    sum_of_actions += historical_action_counter[s][l][f][0] + historical_action_counter[s][l][f][1]
-                    sum_of_actions = math.floor(sum_of_actions / action_time_slots)
+                    for a in range(2):
+                        if action_properties[a + 3][2] > 0:  # only for function lock, in other cases there is no such impact
+                            sum_of_actions += historical_action_counter[s][l][f][a]
+                    sum_of_actions = math.floor(sum_of_actions / action_time_slots + 0.5)
                     action_feedback[s][l][f] = sum_of_actions
 
     return action_feedback
@@ -175,54 +182,88 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
 
 def get_action_arrival_times(iterations, action_slots_number, lambdas, seed_base):
     random.seed(seed_base + 1000)
-    action_arrival_times = [[[[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]]],
-                     [[[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]], [[None, None], [None, None]]]]
+    action_arrival_times = []
     for s in range(2):
-        for f in range(2):
-            for l in range(5):
+        action_arrival_times.append([])
+        for l in range(5):
+            action_arrival_times[s].append([])
+            for f in range(2):
+                action_arrival_times[s][l].append([])
                 for a in range(2):
-                    action_arrival_times[s][l][f][a] = list()
-                    action_arrival_times[s][l][f][a].append([0, 0])
-                    last_arrival_time = 0
+                    action_arrival_times[s][l][f].append([])
+                    last_arrival_time = 1
                     while True:
                         time_offset = -math.log(1 - random.random()) / lambdas[a]
                         last_arrival_time = math.ceil(last_arrival_time + time_offset)
                         iteration = math.ceil(last_arrival_time / action_slots_number)
                         if iteration <= iterations:
                             action_arrival_times[s][l][f][a].append([iteration,
-                                                                     last_arrival_time - (iteration - 1)*action_slots_number])
+                                                                     last_arrival_time - (iteration - 1)*action_slots_number, 0])
                         else:
                             break
     return action_arrival_times
 
 
+def assign_action_counters(batch_size, arrival_slot, action_counters, action_properties, action_slots_number):
+    slots_left = action_slots_number - arrival_slot + 1
+    batch_size_left = batch_size
+    while batch_size_left > 0:
+        min_val = 10000000
+        t_min = -1
+        for t in range(slots_left):
+            if action_counters[action_slots_number - 1 - t] <= min_val:
+                min_val = action_counters[action_slots_number - 1 - t]
+                t_min = slots_left - 1 - t
+            else:
+                break
+        if action_properties[0] > 0 and min_val > 0:
+            return batch_size_left  # it means we cannot allocate more of such type of action
+        for t in range(slots_left):
+            if t < t_min:
+                continue
+            action_counters[arrival_slot - 1 + t] += 1
+            batch_size_left -= 1
+            if batch_size_left == 0:
+                break
+    return 0
+
+
+def create_leftover_arrival(leftover_demand, iteration, action_arrival_time):
+    for i in range(len(action_arrival_time)):
+        if action_arrival_time[i][0] > iteration:
+            action_arrival_time.insert(i, [iteration + 1, 1, leftover_demand])
+            break
+
+
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
-                                   total_action_counter, action_slots_number, action_demand_level,
-                                   change_action_demands, action_trend_threshold, action_change_percent,
+                                   total_action_counter, action_slots_number, action_demand_levels, action_log_batch_shape,
+                                   action_properties, change_action_demands, action_trend_threshold, action_change_percent,
                                    prev_action_information, action_arrival_time, iterations, num_time_slots, seed_base):
     new_procedure = True
     action_demand = []
     initial_action_counter = []
+    test_allocations = []
     for s in range(2):
         action_demand.append([])
         initial_action_counter.append([])
+        test_allocations.append([])
         for l in range(5):
             action_demand[s].append([])
             initial_action_counter[s].append([])
+            test_allocations[s].append([])
             for f in range(2):
                 action_demand[s][l].append([0, 0])
+                test_allocations[s][l].append([0, 0])
                 initial_action_counter[s][l].append([])
                 for a in range(2):
                     initial_action_counter[s][l][f].append([])
                     for t in range(num_time_slots):
-                        if a == 1:
-                            initial_action_counter[s][l][f][a].append(2)
-                        else:
-                            initial_action_counter[s][l][f][a].append(2)
+                        initial_action_counter[s][l][f][a].append(0)
 
     result = {
         "actionDemands": action_demand,
-        "initialActionCounter": initial_action_counter
+        "initialActionCounter": initial_action_counter,
+        "testAllocations": test_allocations
     }
 
     max_break_counter = 100
@@ -234,53 +275,71 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
             print("Action Demands")
         else:
             print("Action Schedule")
-            for s in range(0):
+            for s in range(2):
                 for f in range(2):
                     for l in range(5):
                         for a in range(2):
-                            arrival_info = 0
-                            for arrival in action_arrival_time[s][l][f][a]:
-                                if arrival[0] == iteration:
-                                    batch_size = action_demand_level * initial_function_placement[s][l][f] * \
-                                                 math.exp(random.randint(0, 1000) / 151) / 75100 / action_slots_number
-                                    arrival_info = arrival_info + batch_size
-                                if arrival[0] > iteration:
-                                    break
-                            arrival_info = math.ceil(arrival_info)
+                            leftover_demand = 0
+                            arrival_info = [0] * action_slots_number
                             if iteration > 1:
-                                prev_required_demand = prev_action_information["initialActionCounter"][s][l][f][a]
-                                diff = prev_required_demand - math.floor(
-                                    total_action_counter[s][l][f][a] / action_slots_number)
-                                # required_demand += diff
+                                prev_required_demand = \
+                                    prev_action_information["allocations"]["initialActionCounter"][s][l][f][a]
+                                prev_allocated_demand = total_action_counter[s][l][f][a]
+                                diff = -prev_allocated_demand
+                                for t in range(action_slots_number):
+                                    diff += prev_required_demand[t + 1]
                                 if diff > 0:
                                     print("ACT {} Differ[{},{}]) = {}".format(a, s, f, diff))
-                                    arrival_info = arrival_info + diff
-                            final_batch_size = min([initial_function_placement[s][l][f], arrival_info])
-                            if final_batch_size != arrival_info:
-                                print("Requested batch size exceeds the function limit")
-                            initial_action_counter[s][l][f][a] = final_batch_size
-                            # new_demand[s][f][a] = new_demand[s][f][a] + final_batch_size
+                                    leftover_demand += assign_action_counters(diff, 1, arrival_info,
+                                                                              action_properties[a + 3],
+                                                                              action_slots_number)
+                            for arrival in action_arrival_time[s][l][f][a]:
+                                if arrival[0] == iteration:
+                                    if arrival[2] > 0:
+                                        batch_size = arrival[2]
+                                    elif action_log_batch_shape:
+                                        batch_size = math.ceil(action_demand_levels[a] * initial_function_placement[s][l][f] *
+                                                               (math.exp(random.random()*3) - 1) / 2000)
+                                    else:
+                                        batch_size = math.ceil(action_demand_levels[a] * initial_function_placement[s][l][f] *
+                                                               math.log(random.random()*5 + 1)/200)
+
+                                    leftover_demand += assign_action_counters(batch_size, arrival[1], arrival_info,
+                                                                              action_properties[a + 3],
+                                                                              action_slots_number)
+                                    # print("Slot [{},{},{},{}]: [{}]-[{}/{}] -> {}".format(s, l, f, a, arrival[1],
+                                    #                                                      batch_size,
+                                    #                                                      initial_function_placement[s][l][f],
+                                    #                                                      arrival_info))
+                                if arrival[0] > iteration:
+                                    break
+                            if leftover_demand > 0:
+                                create_leftover_arrival(leftover_demand, iteration, action_arrival_time[s][l][f][a])
+                            for t in range(action_slots_number):
+                                initial_action_counter[s][l][f][a][t + 1] = arrival_info[t]
 
             for s in range(2):
                 for l in range(5):
                     for f in range(2):
                         for a in range(2):
                             for t in range(action_slots_number):
+                                test_allocations[s][l][f][a] += initial_action_counter[s][l][f][a][t + 1]
                                 new_demand[s][f][a] += initial_action_counter[s][l][f][a][t + 1]
 
             for s in range(2):
                 print("[{}] Service {} Action Demands: vLB [[{},{}], vDNS [{},{}]]".format(iteration, s,
-                                                                                  new_demand[s][0][0],
-                                                                                  new_demand[s][0][1],
-                                                                                  new_demand[s][1][0],
-                                                                                  new_demand[s][1][1]))
+                                                                                           new_demand[s][0][0],
+                                                                                           new_demand[s][0][1],
+                                                                                           new_demand[s][1][0],
+                                                                                           new_demand[s][1][1]))
     else:
+        raise Exception("Deprecated")
         if joint_actions_allocation:
             print("Action Demands")
             a = 1
             for s in range(2):
                 for f in range(2):
-                    required_demand = action_demand_level * (f + 1) * action_slots_number  # twice the amount for DNS
+                    required_demand = action_demand_levels[a] * (f + 1) * action_slots_number  # twice the amount for DNS
                     if iteration > 1:
                         diff = required_demand
                         for l in range(5):
@@ -319,7 +378,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                     for l in range(5):
                         total_placement += initial_function_placement[s][l][f]
                     # required_demand = action_demand_level * 0.01  for % change
-                    required_demand = action_demand_level * (f + 1)  # twice the amount for DNS
+                    required_demand = action_demand_levels[a] * (f + 1)  # twice the amount for DNS
                     if change_action_demands and iteration > 1:
                         step = required_demand * action_change_percent / 100.0
                         change = direction_indicator * (threshold_indicator - 1) * step
@@ -376,21 +435,14 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
     test = False
     if test and iteration == 1:
         next_demand = result
-        for i in range(iterations):
-            if joint_actions_allocation:
-                next_demand = get_initial_action_information(2 + i, joint_actions_allocation,
-                                                             initial_function_placement,
-                                                             next_demand["actionDemands"],
-                                                             action_slots_number, action_demand_level,
-                                                             change_action_demands,
-                                                             action_trend_threshold, action_change_percent, next_demand,
-                                                             action_arrival_time, iterations, num_time_slots, seed_base)
-            else:
-                next_demand = get_initial_action_information(2 + i, joint_actions_allocation, initial_function_placement,
-                                                             next_demand["initialActionCounter"], action_slots_number, action_demand_level,
-                                                             change_action_demands, action_trend_threshold,
-                                                             action_change_percent, next_demand, action_arrival_time,
-                                                             iterations, num_time_slots, seed_base)
+        for i in range(iterations - 1):
+            next_demand = get_initial_action_information(2 + i, joint_actions_allocation,
+                                                         initial_function_placement,
+                                                         next_demand["testAllocations"], action_slots_number,
+                                                         action_demand_levels, action_log_batch_shape,
+                                                         action_properties, change_action_demands, action_trend_threshold,
+                                                         action_change_percent, {"allocations": next_demand}, action_arrival_time,
+                                                         iterations, num_time_slots, seed_base)
         exit(0)
 
     return result
@@ -536,11 +588,13 @@ def gen_initial_demand_allocation(service_demands, initial_function_placement, f
 def gen_result_file_name(config, sim_seq_number):
     slot_multiplier = config.getint("Slots", "multiplier")
     traffic_demand_level = config.getint("TrafficDemands", "level")
-    action_demand_level = config.getint("ActionDemands", "level")
+    action_1_demand_level = config.getint("ActionDemands", "act-1-level")
+    action_2_demand_level = config.getint("ActionDemands", "act-2-level")
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
-    return "sn_{}-tr_{}_{}-ac_{}-{}-sq_{}.csv".format(slot_multiplier, change_traffic_demands, traffic_demand_level,
-                                                      action_demand_level, change_action_demands, sim_seq_number).lower()
+    return "sn_{}-tr_{}_{}-ac_{}_{}-{}-sq_{}.csv".format(slot_multiplier, change_traffic_demands, traffic_demand_level,
+                                                         action_1_demand_level, action_2_demand_level,
+                                                         change_action_demands, sim_seq_number).lower()
 
 
 async def run_allocation(config, res_file):
@@ -551,7 +605,11 @@ async def run_allocation(config, res_file):
     traffic_min_demand = config.getint("TrafficDemands", "min-demand")
     traffic_trend_threshold = config.getint("TrafficDemands", "trend-threshold")
     traffic_change_percent = config.getfloat("TrafficDemands", "change-percent")
-    action_demand_level = config.getint("ActionDemands", "level")
+    action_1_demand_level = config.getint("ActionDemands", "act-1-level")
+    action_2_demand_level = config.getint("ActionDemands", "act-2-level")
+    action_1_demand_lambda = config.getfloat("ActionDemands", "act-1-lambda")
+    action_2_demand_lambda = config.getfloat("ActionDemands", "act-2-lambda")
+    action_log_batch_shape = config.getboolean("ActionDemands", "log-batch-shape")
     action_trend_threshold = config.getint("ActionDemands", "trend-threshold")
     action_change_percent = config.getfloat("ActionDemands", "change-percent")
     joint_actions_allocation = config.getboolean("Allocation", "joint-actions-allocation")
@@ -588,6 +646,14 @@ async def run_allocation(config, res_file):
 
     function_requirements = [[4, 8, 5],  # vLB_1
                              [2, 4, 2]]  # vDNS_1
+
+    # ACT_CONFLICT, ACT_RES_LOCK, ACT_FN_LOCK, ACT_DEADLINE
+    action_properties = [[1, 1, 0, 0],  # SCALE_OUT
+                         [1, 0, 1, 0],  # SCALE_IN
+                         [0, 0, 0, 0],  # TD
+                         [1, 0, 1, 0],  # ACT_1
+                         [0, 0, 1, 0]]  # ACT_2
+
     service_demands = gen_traffic_demand_information(1, traffic_min_demand, traffic_demand_level,
                                                      change_traffic_demands, traffic_trend_threshold,
                                                      traffic_change_percent, seed_base)
@@ -601,6 +667,7 @@ async def run_allocation(config, res_file):
     target_placement["initialDemandAllocation"] = initial_demand_allocation
     target_placement["initialFunctionPlacement"] = initial_function_placement
     target_placement["extraTimeSlots"] = remaining_time_slots
+    target_placement["actionProperties"] = action_properties
 
     # Solve the placement problem
     final_placement_solution = None
@@ -622,7 +689,8 @@ async def run_allocation(config, res_file):
 
     action_time_slots = maxActionDuration * slot_multiplier
     num_time_slots = action_time_slots + 1
-    action_arrival_time = get_action_arrival_times(max_iterations, action_time_slots, [0.5, 0.4], seed_base)
+    action_arrival_time = get_action_arrival_times(max_iterations, action_time_slots,
+                                                   [action_1_demand_lambda, action_2_demand_lambda], seed_base)
     iterations = 0
     avgSla = [0, 0]
     totalPlacement = [[0, 0], [0, 0]]
@@ -652,6 +720,7 @@ async def run_allocation(config, res_file):
         orchestration_allocation["targetDemandAllocationCost"] = targetDemandAllocationCost
         orchestration_allocation["maxFunctionRequirements"] = function_requirements
         orchestration_allocation["initialFunctionPlacement"] = initial_function_placement
+        orchestration_allocation["actionProperties"] = action_properties
         service_demands = gen_traffic_demand_information(iterations, traffic_min_demand, traffic_demand_level,
                                                          change_traffic_demands, traffic_trend_threshold,
                                                          traffic_change_percent, seed_base)
@@ -664,14 +733,14 @@ async def run_allocation(config, res_file):
             prev_action_allocation = action_demand_history[-1]
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement, lastActionCounterInLocations,
-                                                           action_time_slots, action_demand_level,
-                                                           change_action_demands, action_trend_threshold,
-                                                           action_change_percent, prev_action_allocation,
+                                                           action_time_slots, [action_1_demand_level, action_2_demand_level],
+                                                           action_log_batch_shape, action_properties, change_action_demands,
+                                                           action_trend_threshold, action_change_percent, prev_action_allocation,
                                                            action_arrival_time, max_iterations, num_time_slots, seed_base)
         action_demand_history.append({"allocations": action_allocation, "counter": None})
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
-                                                                   action_demand_history, allocate_actions,
-                                                                   action_time_slots)
+                                                                   action_demand_history, action_properties,
+                                                                   allocate_actions, action_time_slots)
         orchestration_allocation["functionReservationForActions"] = function_reservations_for_actions
         orchestration_allocation["initialActionCounter"] = action_allocation["initialActionCounter"]
         orchestration_allocation["actionDemands"] = action_allocation["actionDemands"]

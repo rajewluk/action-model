@@ -25,7 +25,6 @@ int: ITERATION_NO;
 int: MAX_SCALED_INST_PER_FN;
 int: MAX_ACTION_DURATION; % calculated
 int: MAX_REMAINING_SLOTS;
-int: MAX_ACTION_PENALTY;
 int: CUSTOM_ACTION_OFFSET = max(ACTION_TYPE) - max(CUSTOM_ACTION_TYPE);
 
 array[LOCATIONS, LOCATIONS] of 0..1000: locationDistance;
@@ -35,7 +34,7 @@ array[SERVICE_INSTANCES] of int: serviceInstanceType;
 array[SERVICE_INSTANCES] of int: serviceInstanceSLALevel;
 array[SERVICE_INSTANCES, LOCATIONS] of int: serviceDemands;
 array[LOCATION_TYPES, FUNCTION_TYPE, ACTION_TYPE] of 0..4: actionDuration;
-array[ACTION_TYPE, ACTION_PROPERTIES] of 0..MAX_ACTION_PENALTY: actionProperties;
+array[ACTION_TYPE, ACTION_PROPERTIES] of 0..1: actionProperties;
 set of int: TIME_SLOTS = 1..NUM_TIME_SLOTS;
 set of int: ACTION_TIME_SLOTS = 2..NUM_TIME_SLOTS;
 
