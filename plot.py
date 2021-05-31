@@ -75,8 +75,11 @@ def print_statistics(statistics):
 
 
 def gen_series_name(pattern, mode_name, seq_n_val, col_name):
+    col_4 = ''
+    if "ACT_" in col_name:
+        col_4 = col_name.split('_')[3]
     series_name_res = pattern.format(mode=mode_name, seq_n = seq_n_val, col_1=col_name.split('_')[0],
-                                     col_2=col_name.split('_')[1], col_3=col_name.split('_')[2]).lower()
+                                     col_2=col_name.split('_')[1], col_3=col_name.split('_')[2], col_4=col_4).lower()
 
     series_name_res = series_name_res.replace("joint", "JRAS").replace("no_cl", "CRA").replace("cl", "CLO")
     return series_name_res
