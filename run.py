@@ -181,6 +181,7 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
 
 
 def get_action_arrival_times(iterations, action_slots_number, lambdas, seed_base):
+    pre_allocation_size = 2
     random.seed(seed_base + 1000)
     action_arrival_times = []
     for s in range(2):
@@ -198,21 +199,28 @@ def get_action_arrival_times(iterations, action_slots_number, lambdas, seed_base
                         iteration = math.ceil(last_arrival_time / action_slots_number)
                         if iteration <= iterations:
                             action_arrival_times[s][l][f][a].append([iteration,
-                                                                     last_arrival_time - (iteration - 1)*action_slots_number, 0])
+                                                                     last_arrival_time - (iteration - 1)*action_slots_number, 0, [[0]*action_slots_number]*pre_allocation_size])
                         else:
                             break
     return action_arrival_times
 
 
-def assign_action_counters(batch_size, arrival_slot, action_counters, action_properties, action_slots_number):
-    slots_left = action_slots_number - arrival_slot + 1
+def assign_action_counters(batch_size, arrival_slot, action_counters, action_properties, action_slots_number,
+                           allocate_actions, function, action):
+    start_slot = arrival_slot
+    if not allocate_actions and action == 0:
+        start_slot = max(arrival_slot, 3)  # left space for scale and TD operations
+    slots_left = action_slots_number - start_slot + 1
     batch_size_left = batch_size
     while batch_size_left > 0:
         min_val = 10000000
         t_min = -1
         for t in range(slots_left):
-            if action_counters[action_slots_number - 1 - t] <= min_val:
-                min_val = action_counters[action_slots_number - 1 - t]
+            action_slot = action_slots_number - 1 - t
+            if not allocate_actions and function == 0 and action_slot == 2:
+                continue  # left space for td operation
+            if action_counters[action_slot] <= min_val:
+                min_val = action_counters[action_slot]
                 t_min = slots_left - 1 - t
             else:
                 break
@@ -221,7 +229,10 @@ def assign_action_counters(batch_size, arrival_slot, action_counters, action_pro
         for t in range(slots_left):
             if t < t_min:
                 continue
-            action_counters[arrival_slot - 1 + t] += 1
+            action_slot = start_slot - 1 + t
+            if not allocate_actions and function == 0 and action_slot == 2:
+                continue  # left space for td operation
+            action_counters[action_slot] += 1
             batch_size_left -= 1
             if batch_size_left == 0:
                 break
@@ -238,7 +249,8 @@ def create_leftover_arrival(leftover_demand, iteration, action_arrival_time):
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
                                    total_action_counter, action_slots_number, action_demand_levels, action_log_batch_shape,
                                    action_properties, change_action_demands, action_trend_threshold, action_change_percent,
-                                   prev_action_information, action_arrival_time, iterations, num_time_slots, seed_base):
+                                   prev_action_information, action_arrival_time, allocate_actions, iterations,
+                                   num_time_slots, seed_base):
     new_procedure = True
     action_demand = []
     initial_action_counter = []
@@ -292,7 +304,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                     print("ACT {} Differ[{},{}]) = {}".format(a, s, f, diff))
                                     leftover_demand += assign_action_counters(diff, 1, arrival_info,
                                                                               action_properties[a + 3],
-                                                                              action_slots_number)
+                                                                              action_slots_number, allocate_actions, f, a)
                             for arrival in action_arrival_time[s][l][f][a]:
                                 if arrival[0] == iteration:
                                     if arrival[2] > 0:
@@ -306,11 +318,12 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
                                     leftover_demand += assign_action_counters(batch_size, arrival[1], arrival_info,
                                                                               action_properties[a + 3],
-                                                                              action_slots_number)
-                                    # print("Slot [{},{},{},{}]: [{}]-[{}/{}] -> {}".format(s, l, f, a, arrival[1],
-                                    #                                                      batch_size,
-                                    #                                                      initial_function_placement[s][l][f],
-                                    #                                                      arrival_info))
+                                                                              action_slots_number, allocate_actions, f, a)
+                                    if False and a == 1 and f == 0:
+                                        print("Slot [{},{},{},{}]: [{}]-[{}/{}] -> {}".format(s, l, f, a, arrival[1],
+                                                                                              batch_size,
+                                                                                              initial_function_placement[s][l][f],
+                                                                                              arrival_info))
                                 if arrival[0] > iteration:
                                     break
                             if leftover_demand > 0:
@@ -442,7 +455,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                                          action_demand_levels, action_log_batch_shape,
                                                          action_properties, change_action_demands, action_trend_threshold,
                                                          action_change_percent, {"allocations": next_demand}, action_arrival_time,
-                                                         iterations, num_time_slots, seed_base)
+                                                         allocate_actions, iterations, num_time_slots, seed_base)
         exit(0)
 
     return result
@@ -736,7 +749,8 @@ async def run_allocation(config, res_file):
                                                            action_time_slots, [action_1_demand_level, action_2_demand_level],
                                                            action_log_batch_shape, action_properties, change_action_demands,
                                                            action_trend_threshold, action_change_percent, prev_action_allocation,
-                                                           action_arrival_time, max_iterations, num_time_slots, seed_base)
+                                                           action_arrival_time, allocate_actions, max_iterations,
+                                                           num_time_slots, seed_base)
         action_demand_history.append({"allocations": action_allocation, "counter": None})
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
                                                                    action_demand_history, action_properties,

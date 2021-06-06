@@ -57,6 +57,9 @@ array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, TIME_SLOTS] of var 0..1: conf
 % placement of functions to satisfy demands within location limits for each time slot
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, ACTION_TYPE, TIME_SLOTS] of var 0..100: actionCounter;
 
+% placement of functions to satisfy demands within location limits for each time slot
+array[SERVICE_INSTANCES, LOCATIONS, TIME_SLOTS] of var 0..100: tdActionCounter;
+
 % allocation of actions to satisfy action demands
 array[SERVICE_INSTANCES, LOCATIONS, FUNCTION_TYPE, CUSTOM_ACTION_TYPE, TIME_SLOTS] of var 0..min([MAX_FN_PLACEMENT, max([actionDemands[i, l, f, a] | i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE])]): actionCounterAllocation;
 
@@ -243,9 +246,9 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS
   let {
     var int: demandChange = sum(l2 in LOCATIONS)(abs(demandAllocations[i, l, l2, t] - demandAllocations[i, l, l2, t - 1]));
   } in if demandChange > 0 then
-    actionCounter[i, l, vLB_1, TD, t] = 1
+    actionCounter[i, l, vLB_1, TD, t] = functionPlacement[i, l, vLB_1, t] /\ tdActionCounter[i, l, t] = 1
   else
-    actionCounter[i, l, vLB_1, TD, t] = 0
+    actionCounter[i, l, vLB_1, TD, t] = 0 /\ tdActionCounter[i, l, t] = 0
   endif
 );
 
@@ -255,13 +258,33 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, t in ACTION_TIME_SLOTS
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
-    actionCounter[i, l, f, ACT_1, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET, t]))
+    if JOINT_SCHEDULING /\ (actionCounter[i, l, f, SCALE_OUT, t] > 0 \/ actionCounter[i, l, f, SCALE_IN, t] > 0 \/ actionCounter[i, l, f, TD, t] > 0) then
+        actionCounter[i, l, f, ACT_1, t] = 0
+    else
+        actionCounter[i, l, f, ACT_1, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1, initialActionCounter[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET, t]))
                                      + actionCounterAllocation[i, l, f, ACT_1 - CUSTOM_ACTION_OFFSET, t]
+    endif
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
-    actionCounter[i, l, f, ACT_2, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1 - actionCounter[i, l, f, ACT_1, t], initialActionCounter[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET, t]))
+    if JOINT_SCHEDULING /\ actionCounter[i, l, f, TD, t] > 0 then
+        actionCounter[i, l, f, ACT_2, t] = 0
+    else
+        actionCounter[i, l, f, ACT_2, t] = max(0, min(functionPlacement[i, l, f, t - 1] - 1 - actionCounter[i, l, f, ACT_1, t], initialActionCounter[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET, t]))
                                      + actionCounterAllocation[i, l, f, ACT_2 - CUSTOM_ACTION_OFFSET, t]
+    endif
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE) (
+    if JOINT_SCHEDULING then
+        sum(t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, SCALE_OUT, t] + actionCounter[i, l, f, SCALE_IN, t]) <= 1
+    endif
+);
+
+constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS) (
+    if JOINT_SCHEDULING then
+        sum(t in ACTION_TIME_SLOTS)(tdActionCounter[i, l, t]) <= 1
+    endif
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t in ACTION_TIME_SLOTS) (
@@ -404,7 +427,7 @@ constraint(
     if TOTAL_ACTION_DEMAND > 0 then
         obj4_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100
     else
-        obj4_1 = 0 % sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_INITIAL_ACTION*100
+        obj4_1 = sum(i in 1..1, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_INITIAL_ACTION*100
     endif
 );
 
@@ -428,7 +451,7 @@ constraint(
     if TOTAL_ACTION_DEMAND > 0 then
         obj4_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_ACTION_DEMAND*100
     else
-        obj4_2 = 0 % sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_INITIAL_ACTION*100
+        obj4_2 = sum(i in 2..2, l in LOCATIONS, f in FUNCTION_TYPE, a in CUSTOM_ACTION_TYPE)(actionDemandGap[i, l, f, a])/TOTAL_INITIAL_ACTION*100
     endif
 );
 
@@ -495,6 +518,9 @@ output ["TOTAL ACT DEMAND: \(TOTAL_ACTION_DEMAND)\n"] ++ ["Objective: \(allocati
        ["\nTraffic Demand Allocation Cost\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ show_float(6, 0, demandAllocationCost[i, l, t]) ++ " " ++ 
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "|" else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
+       ["\nAction Counter for vLB\n\(LOCATIONS_ENUM)"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionCounter[i, l, vLB_1, 4, t]),\(actionCounter[i, l, vLB_1, 5, t])]" ++ " " ++
+         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nAction Demand Allocation Gap for vLB\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionDemandGap[i, l, vLB_1, 1]),\(actionDemandGap[i, l, vLB_1, 2])]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
@@ -507,13 +533,19 @@ output ["TOTAL ACT DEMAND: \(TOTAL_ACTION_DEMAND)\n"] ++ ["Objective: \(allocati
        ["\nvCompleted LB Scale vs vDNS Scale vs TD\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionCounter[i, l, vLB_1, SCALE_OUT, t]),\(actionCounter[i, l, vLB_1, SCALE_IN, t]),\(actionCounter[i, l, vLB_1, TD, t])]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
-       ["\nLB action placement"] ++
-       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionPlacement[i, l, vLB_1, SCALE_OUT, t]),\(actionPlacement[i, l, vLB_1, SCALE_IN, t]),\(actionPlacement[i, l, vLB_1, TD, t])]" ++ " " ++
+       ["\nFunction placement\n\(LOCATIONS_ENUM)"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(functionPlacement[i, l, vLB_1, t]),\(functionPlacement[i, l, vDNS_1, t])]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
-       ["\nFunction placement\n\(LOCATIONS_ENUM)"] ++       
-       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(functionPlacement[i, l, vLB_1, t]),\(functionPlacement[i, l, vDNS_1, t])]" ++ " " ++ 
-         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++ 
-       [if l == 1 /\ t == 1 then "\n>>" else "" endif ++ "[\(functionPlacementTarget[i, l, vLB_1]),\(functionPlacementTarget[i, l, vDNS_1])]" ++ " " ++ 
+%       [if l == 1 /\ t == 1 then "\n>>" else "" endif ++ "[\(functionPlacementTarget[i, l, vLB_1]),\(functionPlacementTarget[i, l, vDNS_1])]" ++ " " ++
+%         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
+       ["\nAdditional Action placement"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(sum(a in ACTION_TYPE)(actionPlacement[i, l, vLB_1, a, t])),\(sum(a in ACTION_TYPE)(actionPlacement[i, l, vDNS_1, a, t]))]" ++ " " ++
+         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
+       ["\nInitial Action Counters"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(sum(a in CUSTOM_ACTION_TYPE)(initialActionCounter[i, l, vLB_1, a, t])),\(sum(a in CUSTOM_ACTION_TYPE)(initialActionCounter[i, l, vDNS_1, a, t]))]" ++ " " ++
+         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
+       ["\nLB standard action placement"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionPlacement[i, l, vLB_1, SCALE_OUT, t] + actionPlacement[i, l, vLB_1, SCALE_IN, t]),\(actionPlacement[i, l, vLB_1, TD, t])]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nRemaining slots\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 then "\n>>" else "" endif ++ "[\(remainingSlots[i, l, vLB_1]),\(remainingSlots[i, l, vDNS_1])]" ++ " " | i in SERVICE_INSTANCES, l in LOCATIONS] ++
