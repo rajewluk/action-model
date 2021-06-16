@@ -10,6 +10,16 @@ import math
 import sys
 from plot_shared import *
 
+
+def print_col_stats(collection, col_name, data_file):
+    df_col = data_file[col_name]
+    agg_mean = df_col.aggregate('mean')
+    agg_std = df_col.aggregate('std')
+    agg_var = df_col.aggregate('var')
+    print("{}\t{:.3f}\t{:.3f}\t{:.3f}".format(col_name, agg_mean, agg_std, agg_var))
+    pass
+
+
 plan_config = configparser.ConfigParser()
 plan_config.read_file(open('plan.cfg'))
 result_root = plan_config['Plot'].get('result-root')
@@ -30,6 +40,12 @@ maxes = list()
 means = list()
 stds = list()
 col = "S1_AVG_SLA"
+col_fp = "S1_LB_FP"
+col_act_1 = "S1_LB_ACT_1"
+col_act_2 = "S1_LB_ACT_2"
+col_dns_fp = "S1_DNS_FP"
+col_dns_act_1 = "S1_DNS_ACT_1"
+col_dns_act_2 = "S1_DNS_ACT_2"
 
 cnt = 3
 mode_count = 0
@@ -40,7 +56,6 @@ for file in files:
         mode_count += 1
     else:
         cnt += 1
-    print(cnt)
     df = pd.read_csv(file, delimiter=";", index_col='Iter', decimal=",")
     file_name = file.name[:-4]
     seq_n = int(file_name[file_name.rfind('_') + 1:])
@@ -48,6 +63,7 @@ for file in files:
     # combination = file.parts[-2].replace("rnd", "v").replace("fix", "f").replace("joint", "JRAS").replace("no_cl", "CRA").replace("cl", "CLO")
     combination = file.parts[-2].replace("rnd-", "v").replace("fix-", "f").\
         replace("joint", "JRAS  ").replace("no_cl", "CRA  ").replace("cl", "CLO  ")
+    print(combination)
     df_col = df[col]
     agg_mean = df_col.aggregate('mean')
     agg_min = df_col.aggregate('min')
@@ -67,6 +83,13 @@ for file in files:
         maxes.append(agg_min)
         means.append(agg_min)
         stds.append(0)
+    print_col_stats(combination, col_fp, df)
+    print_col_stats(combination, col_dns_fp, df)
+    print_col_stats(combination, col_act_1, df)
+    print_col_stats(combination, col_dns_act_1, df)
+    print_col_stats(combination, col_act_2, df)
+    print_col_stats(combination, col_dns_act_2, df)
+
 
 # construct some data like what you have:
 mins = np.asarray(mins)

@@ -277,13 +277,13 @@ constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE, t 
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS, f in FUNCTION_TYPE) (
     if JOINT_SCHEDULING then
-        sum(t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, SCALE_OUT, t] + actionCounter[i, l, f, SCALE_IN, t]) <= 1
+        sum(t in ACTION_TIME_SLOTS)(actionCounter[i, l, f, SCALE_OUT, t] + actionCounter[i, l, f, SCALE_IN, t]) <= 2
     endif
 );
 
 constraint forall(i in SERVICE_INSTANCES, l in LOCATIONS) (
     if JOINT_SCHEDULING then
-        sum(t in ACTION_TIME_SLOTS)(tdActionCounter[i, l, t]) <= 1
+        sum(t in ACTION_TIME_SLOTS)(tdActionCounter[i, l, t]) <= 2
     endif
 );
 

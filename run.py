@@ -246,11 +246,20 @@ def create_leftover_arrival(leftover_demand, iteration, action_arrival_time):
             break
 
 
+first_initial_function_placement = None
+
+
 def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
                                    total_action_counter, action_slots_number, action_demand_levels, action_log_batch_shape,
                                    action_properties, change_action_demands, action_trend_threshold, action_change_percent,
                                    prev_action_information, action_arrival_time, allocate_actions, iterations,
                                    num_time_slots, seed_base):
+    global first_initial_function_placement
+    if first_initial_function_placement is None:
+        first_initial_function_placement = initial_function_placement
+
+    if iteration < 4:
+        initial_function_placement = first_initial_function_placement
     new_procedure = True
     action_demand = []
     initial_action_counter = []
