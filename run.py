@@ -619,6 +619,10 @@ def gen_result_file_name(config, sim_seq_number):
                                                          change_action_demands, sim_seq_number).lower()
 
 
+def get_target_state():
+    pass
+
+
 async def run_allocation(config, res_file):
     slot_multiplier = config.getint("Slots", "multiplier")
     max_iterations = config.getint("Slots", "iterations")

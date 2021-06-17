@@ -539,13 +539,13 @@ output ["TOTAL ACT DEMAND: \(TOTAL_ACTION_DEMAND)\n"] ++ ["Objective: \(allocati
 %       [if l == 1 /\ t == 1 then "\n>>" else "" endif ++ "[\(functionPlacementTarget[i, l, vLB_1]),\(functionPlacementTarget[i, l, vDNS_1])]" ++ " " ++
 %         if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nAdditional Action placement"] ++
-       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(sum(a in ACTION_TYPE)(actionPlacement[i, l, vLB_1, a, t])),\(sum(a in ACTION_TYPE)(actionPlacement[i, l, vDNS_1, a, t]))]" ++ " " ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(sum(a in CUSTOM_ACTION_TYPE)(actionPlacement[i, l, vLB_1, a + CUSTOM_ACTION_OFFSET, t])),\(sum(a in CUSTOM_ACTION_TYPE)(actionPlacement[i, l, vDNS_1, a + CUSTOM_ACTION_OFFSET, t]))]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nInitial Action Counters"] ++
        [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(sum(a in CUSTOM_ACTION_TYPE)(initialActionCounter[i, l, vLB_1, a, t])),\(sum(a in CUSTOM_ACTION_TYPE)(initialActionCounter[i, l, vDNS_1, a, t]))]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
-       ["\nLB standard action placement"] ++
-       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(actionPlacement[i, l, vLB_1, SCALE_OUT, t] + actionPlacement[i, l, vLB_1, SCALE_IN, t]),\(actionPlacement[i, l, vLB_1, TD, t])]" ++ " " ++
+       ["\nStandard action placement"] ++
+       [if l == 1 /\ t == 1 then "\n> " else "" endif ++ "[\(sum(a in 1..3)(actionPlacement[i, l, vLB_1, a, t])),\(sum(a in 1..3)(actionPlacement[i, l, vDNS_1, a, t]))]" ++ " " ++
          if l == max(LOCATIONS) /\ t < max(TIME_SLOTS) then "| " else "" endif | i in SERVICE_INSTANCES, t in TIME_SLOTS, l in LOCATIONS] ++
        ["\nRemaining slots\n\(LOCATIONS_ENUM)"] ++
        [if l == 1 then "\n>>" else "" endif ++ "[\(remainingSlots[i, l, vLB_1]),\(remainingSlots[i, l, vDNS_1])]" ++ " " | i in SERVICE_INSTANCES, l in LOCATIONS] ++
