@@ -249,7 +249,7 @@ def create_leftover_arrival(leftover_demand, iteration, action_arrival_time):
 first_initial_function_placement = None
 
 
-def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement,
+def get_initial_action_information(iteration, joint_actions_allocation, initial_function_placement, target_function_placement,
                                    total_action_counter, action_slots_number, action_demand_levels, action_log_batch_shape,
                                    action_properties, change_action_demands, action_trend_threshold, action_change_percent,
                                    prev_action_information, action_arrival_time, allocate_actions, iterations,
@@ -287,11 +287,11 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
         "testAllocations": test_allocations
     }
 
-    max_break_counter = 100
     random.seed(seed_base + iteration)
 
     new_demand = [[[0, 0], [0, 0]], [[0, 0], [0, 0]]]
     if new_procedure:
+        batch_reference_placement = target_function_placement
         if joint_actions_allocation:
             print("Action Demands")
         else:
@@ -319,10 +319,10 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                     if arrival[2] > 0:
                                         batch_size = arrival[2]
                                     elif action_log_batch_shape:
-                                        batch_size = math.ceil(action_demand_levels[a] * initial_function_placement[s][l][f] *
+                                        batch_size = math.ceil(action_demand_levels[a] * batch_reference_placement[s][l][f] *
                                                                (math.exp(random.random()*3) - 1) / 2000)
                                     else:
-                                        batch_size = math.ceil(action_demand_levels[a] * initial_function_placement[s][l][f] *
+                                        batch_size = math.ceil(action_demand_levels[a] * batch_reference_placement[s][l][f] *
                                                                math.log(random.random()*5 + 1)/200)
 
                                     leftover_demand += assign_action_counters(batch_size, arrival[1], arrival_info,
@@ -356,6 +356,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                                                                            new_demand[s][1][1]))
     else:
         raise Exception("Deprecated")
+        max_break_counter = 100
         if joint_actions_allocation:
             print("Action Demands")
             a = 1
@@ -459,7 +460,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
         next_demand = result
         for i in range(iterations - 1):
             next_demand = get_initial_action_information(2 + i, joint_actions_allocation,
-                                                         initial_function_placement,
+                                                         initial_function_placement, target_function_placement,
                                                          next_demand["testAllocations"], action_slots_number,
                                                          action_demand_levels, action_log_batch_shape,
                                                          action_properties, change_action_demands, action_trend_threshold,
@@ -619,8 +620,20 @@ def gen_result_file_name(config, sim_seq_number):
                                                          change_action_demands, sim_seq_number).lower()
 
 
-def get_target_state():
-    pass
+async def get_target_state(target_placement, initial_function_placement, initial_demand_allocation):
+    target_placement["initialDemandAllocation"] = initial_demand_allocation
+    target_placement["initialFunctionPlacement"] = initial_function_placement
+    # Solve the placement problem
+    final_placement_solution = None
+    async for result in target_placement.solutions(all_solutions=False, intermediate_solutions=False):
+        if result.solution is None:
+            print("No Solution")
+            continue
+        final_placement_solution = result.solution
+        print("Intermediate Solution: {:.4f}".format(result.solution.allocationObjective))
+    print("Final Target Solution: {:.4f}".format(round_sig(final_placement_solution.allocationObjective, 2)))
+    print(final_placement_solution)
+    return final_placement_solution
 
 
 async def run_allocation(config, res_file):
@@ -690,28 +703,17 @@ async def run_allocation(config, res_file):
 
     target_placement["maxFunctionRequirements"] = function_requirements
     target_placement["serviceDemands"] = service_demands
-    target_placement["initialDemandAllocation"] = initial_demand_allocation
-    target_placement["initialFunctionPlacement"] = initial_function_placement
     target_placement["extraTimeSlots"] = remaining_time_slots
     target_placement["actionProperties"] = action_properties
 
-    # Solve the placement problem
-    final_placement_solution = None
-    async for result in target_placement.solutions(all_solutions=False, intermediate_solutions=True):
-        if result.solution is None:
-            print("No Solution")
-            continue
-        final_placement_solution = result.solution
-        print("Intermediate Solution: {:.4f}".format(result.solution.allocationObjective))
-    print("Final Solution: {:.4f}".format(round_sig(final_placement_solution.allocationObjective, 2)))
-    print(final_placement_solution)
+    target_placement_solution = await get_target_state(target_placement, initial_function_placement, initial_demand_allocation)
 
-    targetDemandAllocations = final_placement_solution.targetDemandAllocations
-    functionPlacementTarget = final_placement_solution.functionPlacementTarget
-    targetSlaSatisfaction = final_placement_solution.targetSlaSatisfaction
-    targetDemandGap = final_placement_solution.targetDemandGap
-    targetDemandAllocationCost = final_placement_solution.targetDemandAllocationCost
-    maxActionDuration = final_placement_solution.maxActionDuration
+    targetDemandAllocations = target_placement_solution.targetDemandAllocations
+    functionPlacementTarget = target_placement_solution.functionPlacementTarget
+    targetSlaSatisfaction = target_placement_solution.targetSlaSatisfaction
+    targetDemandGap = target_placement_solution.targetDemandGap
+    targetDemandAllocationCost = target_placement_solution.targetDemandAllocationCost
+    maxActionDuration = target_placement_solution.maxActionDuration
 
     action_time_slots = maxActionDuration * slot_multiplier
     num_time_slots = action_time_slots + 1
@@ -722,12 +724,11 @@ async def run_allocation(config, res_file):
     totalPlacement = [[0, 0], [0, 0]]
     totalActionCounter = [[[0, 0], [0, 0]], [[0, 0], [0, 0]]]
     lastActionCounterInLocations = None
+    final_allocation_solution = None
     action_demand_history = list()
-    roundPlacementSolution = round_sig(final_placement_solution.allocationObjective, 2)
-    final_objective = roundPlacementSolution + 1
     total_start_time = time.time()
     res_writer = csv.writer(res_file, dialect="excel", delimiter=";")
-    while iterations < max_iterations:  # and final_objective > roundPlacementSolution:
+    while iterations < max_iterations:
         start_time = time.time()
         iterations += 1
         print("{} Calculation for {} time slots".format(iterations, action_time_slots))
@@ -757,8 +758,12 @@ async def run_allocation(config, res_file):
         prev_action_allocation = None
         if iterations > 1:
             prev_action_allocation = action_demand_history[-1]
+        target_placement_solution = await get_target_state(target_placement, initial_function_placement,
+                                                           initial_demand_allocation)
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
-                                                           initial_function_placement, lastActionCounterInLocations,
+                                                           initial_function_placement,
+                                                           target_placement_solution.functionPlacementTarget,
+                                                           lastActionCounterInLocations,
                                                            action_time_slots, [action_1_demand_level, action_2_demand_level],
                                                            action_log_batch_shape, action_properties, change_action_demands,
                                                            action_trend_threshold, action_change_percent, prev_action_allocation,
@@ -826,7 +831,7 @@ async def run_allocation(config, res_file):
              ]))
         res_file.flush()
 
-    print("Final Solution: {:.4f} after {} time slots".format(final_objective, (num_time_slots - 1) * iterations))
+    print("Final Solution: {:.4f} after {} time slots".format(final_allocation_solution.objective, (num_time_slots - 1) * iterations))
     print("Final Statistics:")
     print("SLA S1: {:.3f} S2: {:.3f}".format(avgSla[0] / iterations, avgSla[1] / iterations))
     print("FNP S1: [{},{}] S2: [{},{}]".format(totalPlacement[0][0], totalPlacement[0][1], totalPlacement[1][0],
