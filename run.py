@@ -620,7 +620,29 @@ def gen_result_file_name(config, sim_seq_number):
                                                          change_action_demands, sim_seq_number).lower()
 
 
-async def get_target_state(target_placement, initial_function_placement, initial_demand_allocation):
+async def get_target_state(target_placement,
+                           max_sla,
+                           optimize_resources,
+                           max_remaining_slots,
+                           service_alternating,
+                           allocate_actions,
+                           service_demands,
+                           function_requirements,
+                           remaining_time_slots,
+                           action_properties,
+                           initial_function_placement,
+                           initial_demand_allocation):
+    target_placement["NUM_TIME_SLOTS"] = 1
+    target_placement["MAX_SLA"] = max_sla
+    target_placement["ITERATION_NO"] = 1
+    target_placement["MAX_REMAINING_SLOTS"] = max_remaining_slots
+    target_placement["MINIMIZE_ALLOCATION"] = optimize_resources
+    target_placement["ONE_SERVICE_OPT"] = service_alternating
+    target_placement["JOINT_SCHEDULING"] = allocate_actions
+    target_placement["maxFunctionRequirements"] = function_requirements
+    target_placement["serviceDemands"] = service_demands
+    target_placement["extraTimeSlots"] = remaining_time_slots
+    target_placement["actionProperties"] = action_properties
     target_placement["initialDemandAllocation"] = initial_demand_allocation
     target_placement["initialFunctionPlacement"] = initial_function_placement
     # Solve the placement problem
@@ -674,15 +696,6 @@ async def run_allocation(config, res_file):
     orchestration_model.add_file("./model_data.dzn", False)
     # print(coin_bc.output_configuration())
 
-    target_placement = minizinc.Instance(coin_bc, placement_model)
-    target_placement["NUM_TIME_SLOTS"] = 1
-    target_placement["MAX_SLA"] = max_sla
-    target_placement["ITERATION_NO"] = 1
-    target_placement["MAX_REMAINING_SLOTS"] = max_remaining_slots
-    target_placement["MINIMIZE_ALLOCATION"] = optimize_resources
-    target_placement["ONE_SERVICE_OPT"] = service_alternating
-    target_placement["JOINT_SCHEDULING"] = allocate_actions
-
     function_requirements = [[4, 8, 5],  # vLB_1
                              [2, 4, 2]]  # vDNS_1
 
@@ -701,12 +714,19 @@ async def run_allocation(config, res_file):
                                                               function_requirements)
     remaining_time_slots = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
 
-    target_placement["maxFunctionRequirements"] = function_requirements
-    target_placement["serviceDemands"] = service_demands
-    target_placement["extraTimeSlots"] = remaining_time_slots
-    target_placement["actionProperties"] = action_properties
-
-    target_placement_solution = await get_target_state(target_placement, initial_function_placement, initial_demand_allocation)
+    target_placement = minizinc.Instance(coin_bc, placement_model)
+    target_placement_solution = await get_target_state(target_placement,
+                                                       max_sla,
+                                                       optimize_resources,
+                                                       max_remaining_slots,
+                                                       service_alternating,
+                                                       allocate_actions,
+                                                       service_demands,
+                                                       function_requirements,
+                                                       remaining_time_slots,
+                                                       action_properties,
+                                                       initial_function_placement,
+                                                       initial_demand_allocation)
 
     targetDemandAllocations = target_placement_solution.targetDemandAllocations
     functionPlacementTarget = target_placement_solution.functionPlacementTarget
@@ -758,7 +778,18 @@ async def run_allocation(config, res_file):
         prev_action_allocation = None
         if iterations > 1:
             prev_action_allocation = action_demand_history[-1]
-        target_placement_solution = await get_target_state(target_placement, initial_function_placement,
+        target_placement = minizinc.Instance(coin_bc, placement_model)
+        target_placement_solution = await get_target_state(target_placement,
+                                                           max_sla,
+                                                           optimize_resources,
+                                                           max_remaining_slots,
+                                                           service_alternating,
+                                                           allocate_actions,
+                                                           service_demands,
+                                                           function_requirements,
+                                                           remaining_time_slots,
+                                                           action_properties,
+                                                           initial_function_placement,
                                                            initial_demand_allocation)
         action_allocation = get_initial_action_information(iterations, joint_actions_allocation,
                                                            initial_function_placement,
