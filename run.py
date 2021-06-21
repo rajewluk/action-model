@@ -635,9 +635,14 @@ def gen_result_file_name(config, sim_seq_number):
     action_2_demand_level = config.getint("ActionDemands", "act-2-level")
     change_traffic_demands = not config.getboolean("TrafficDemands", "fixed")
     change_action_demands = not config.getboolean("ActionDemands", "fixed")
-    return "sn_{}-tr_{}_{}-ac_{}_{}-{}-sq_{}.csv".format(slot_multiplier, change_traffic_demands, traffic_demand_level,
-                                                         action_1_demand_level, action_2_demand_level,
-                                                         change_action_demands, sim_seq_number).lower()
+    action_feedback_delay = config.getint("Allocation", "action-feedback-delay")
+    action_feedback_overprovisioning = config.getint("Allocation", "action-feedback-overprovisioning")
+    return "sn_{}-tr_{}_{}-ac_{}_{}-{}-al_{}_{}-sq_{}.csv".format(slot_multiplier, change_traffic_demands,
+                                                                  traffic_demand_level,action_1_demand_level,
+                                                                  action_2_demand_level, change_action_demands,
+                                                                  action_feedback_delay,
+                                                                  action_feedback_overprovisioning, sim_seq_number
+                                                                  ).lower()
 
 
 async def get_target_state(target_placement,
