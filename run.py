@@ -206,10 +206,13 @@ def get_action_arrival_times(iterations, action_slots_number, lambdas, seed_base
 
 
 def assign_action_counters(batch_size, arrival_slot, action_counters, action_properties, action_slots_number,
-                           allocate_actions, function, action):
+                           excluded_slots):
     start_slot = arrival_slot
-    if not allocate_actions and action == 0:
-        start_slot = max(arrival_slot, 3)  # left space for scale and TD operations
+    for t in range(start_slot - 1, action_slots_number):
+        if not excluded_slots[t]:
+            start_slot = t + 1
+            break
+
     slots_left = action_slots_number - start_slot + 1
     batch_size_left = batch_size
     while batch_size_left > 0:
@@ -217,8 +220,8 @@ def assign_action_counters(batch_size, arrival_slot, action_counters, action_pro
         t_min = -1
         for t in range(slots_left):
             action_slot = action_slots_number - 1 - t
-            if not allocate_actions and function == 0 and action_slot == 2:
-                continue  # left space for td operation
+            if excluded_slots[action_slot]:
+                continue
             if action_counters[action_slot] <= min_val:
                 min_val = action_counters[action_slot]
                 t_min = slots_left - 1 - t
@@ -226,11 +229,13 @@ def assign_action_counters(batch_size, arrival_slot, action_counters, action_pro
                 break
         if action_properties[0] > 0 and min_val > 0:
             return batch_size_left  # it means we cannot allocate more of such type of action
+        if t_min == -1:
+            return batch_size_left  # no slots left for this action
         for t in range(slots_left):
             if t < t_min:
                 continue
             action_slot = start_slot - 1 + t
-            if not allocate_actions and function == 0 and action_slot == 2:
+            if excluded_slots[action_slot]:
                 continue  # left space for td operation
             action_counters[action_slot] += 1
             batch_size_left -= 1
@@ -300,6 +305,19 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                 for f in range(2):
                     for l in range(5):
                         for a in range(2):
+                            excluded_slots = [False] * action_slots_number
+                            if not allocate_actions:
+                                if f == 0:  # left space for td operation
+                                    excluded_slots[random.randint(0, action_slots_number - 1)] = True
+                                if a == 0:  # left space scaling
+                                    while True:
+                                        scale_start = random.randint(0, action_slots_number - 2)
+                                        scale_end = scale_start + 1
+                                        if not (excluded_slots[scale_start] or excluded_slots[scale_end]):
+                                            excluded_slots[scale_start] = True
+                                            excluded_slots[scale_end] = True
+                                            break
+                            # print("Excluded for ({},{}): {}". format(f, a, excluded_slots))
                             leftover_demand = 0
                             arrival_info = [0] * action_slots_number
                             if iteration > 1:
@@ -313,7 +331,8 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
                                     print("ACT {} Differ[{},{}]) = {}".format(a, s, f, diff))
                                     leftover_demand += assign_action_counters(diff, 1, arrival_info,
                                                                               action_properties[a + 3],
-                                                                              action_slots_number, allocate_actions, f, a)
+                                                                              action_slots_number,
+                                                                              excluded_slots)
                             for arrival in action_arrival_time[s][l][f][a]:
                                 if arrival[0] == iteration:
                                     if arrival[2] > 0:
@@ -327,7 +346,7 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
                                     leftover_demand += assign_action_counters(batch_size, arrival[1], arrival_info,
                                                                               action_properties[a + 3],
-                                                                              action_slots_number, allocate_actions, f, a)
+                                                                              action_slots_number, excluded_slots)
                                     if False and a == 1 and f == 0:
                                         print("Slot [{},{},{},{}]: [{}]-[{}/{}] -> {}".format(s, l, f, a, arrival[1],
                                                                                               batch_size,
