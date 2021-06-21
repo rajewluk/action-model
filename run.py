@@ -66,6 +66,7 @@ def load_config(config_name, main_config):
             new_config['Allocation']['service-alternating'] = 'no'
             new_config['Allocation']['allocate-actions'] = 'yes'
             new_config['Allocation']['action-feedback-delay'] = '0'
+            new_config['Allocation']['action-feedback-overprovisioning'] = '0'
             new_config['Allocation']['initial-demand-level'] = '80'
             new_config['Allocation']['seed-base'] = '0'
             new_config['Allocation']['joint-actions-allocation'] = 'no'
@@ -160,8 +161,8 @@ def round_sig(number, sig):
         return value
 
 
-def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_history, action_properties, allocate_actions,
-                           action_time_slots):
+def get_cl_action_feedback(iteration, action_feedback_delay, action_feedback_overprovisioning, action_demand_history,
+                           action_properties, allocate_actions, action_time_slots):
     action_feedback = [[[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
                        [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]]
 
@@ -175,7 +176,7 @@ def get_cl_action_feedback(iteration, action_feedback_delay, action_demand_histo
                         if action_properties[a + 3][2] > 0:  # only for function lock, in other cases there is no such impact
                             sum_of_actions += historical_action_counter[s][l][f][a]
                     sum_of_actions = math.floor(sum_of_actions / action_time_slots + 0.5)
-                    action_feedback[s][l][f] = sum_of_actions
+                    action_feedback[s][l][f] = sum_of_actions + action_feedback_overprovisioning * (f + 1)
 
     return action_feedback
 
@@ -263,8 +264,6 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
     if first_initial_function_placement is None:
         first_initial_function_placement = initial_function_placement
 
-    if iteration < 4:
-        initial_function_placement = first_initial_function_placement
     new_procedure = True
     action_demand = []
     initial_action_counter = []
@@ -296,6 +295,8 @@ def get_initial_action_information(iteration, joint_actions_allocation, initial_
 
     new_demand = [[[0, 0], [0, 0]], [[0, 0], [0, 0]]]
     if new_procedure:
+        if not change_action_demands:
+            initial_function_placement = first_initial_function_placement
         batch_reference_placement = target_function_placement
         if joint_actions_allocation:
             print("Action Demands")
@@ -700,6 +701,7 @@ async def run_allocation(config, res_file):
     initial_demand_level = config.getint("Allocation", "initial-demand-level")
     allocate_actions = config.getboolean("Allocation", "allocate-actions")
     action_feedback_delay = config.getint("Allocation", "action-feedback-delay")
+    action_feedback_overprovisioning = config.getint("Allocation", "action-feedback-overprovisioning")
     seed_base = config.getint("Allocation", "seed-base")
     max_sla = config.getfloat("Statistics", "max-sla")
     # Transform Model into a instance
@@ -821,6 +823,7 @@ async def run_allocation(config, res_file):
                                                            num_time_slots, seed_base)
         action_demand_history.append({"allocations": action_allocation, "counter": None})
         function_reservations_for_actions = get_cl_action_feedback(iterations, action_feedback_delay,
+                                                                   action_feedback_overprovisioning,
                                                                    action_demand_history, action_properties,
                                                                    allocate_actions, action_time_slots)
         orchestration_allocation["functionReservationForActions"] = function_reservations_for_actions
